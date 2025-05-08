@@ -1,3 +1,5 @@
+"use client"
+
 import dynamic from "next/dynamic"
 
 // ใช้ dynamic import เพื่อป้องกันปัญหา SSR
