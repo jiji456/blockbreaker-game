@@ -1,19 +1,36 @@
-import * as React from "react"
+"use client"
 
-const MOBILE_BREAKPOINT = 768
+import { useState, useEffect } from "react"
 
-export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
+export function useMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(false)
 
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+  useEffect(() => {
+    // ตรวจสอบว่าเป็นมือถือหรือไม่
+    const checkMobile = () => {
+      const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera
+      const mobileRegex = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i
+
+      // ตรวจสอบจาก User Agent
+      const isMobileDevice = mobileRegex.test(userAgent.toLowerCase())
+
+      // ตรวจสอบจากขนาดหน้าจอ
+      const isMobileScreen = window.innerWidth < 768
+
+      setIsMobile(isMobileDevice || isMobileScreen)
     }
-    mql.addEventListener("change", onChange)
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    return () => mql.removeEventListener("change", onChange)
+
+    // ตรวจสอบตอนโหลดหน้า
+    checkMobile()
+
+    // ตรวจสอบเมื่อมีการเปลี่ยนขนาดหน้าจอ
+    window.addEventListener("resize", checkMobile)
+
+    // Cleanup
+    return () => {
+      window.removeEventListener("resize", checkMobile)
+    }
   }, [])
 
-  return !!isMobile
+  return isMobile
 }

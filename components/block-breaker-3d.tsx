@@ -7,6 +7,7 @@ import { Physics, useBox, usePlane } from "@react-three/cannon"
 import { OrbitControls, PerspectiveCamera, Text, Center, Float, Stars, Sky, Cloud } from "@react-three/drei"
 import { Bloom, EffectComposer } from "@react-three/postprocessing"
 import type * as THREE from "three"
+import { useMobile } from "@/hooks/use-mobile"
 
 // Block type
 type Block3DProps = {
@@ -66,6 +67,7 @@ function Block3D({
   const [localHealth, setLocalHealth] = useState(health)
   const [isHovered, setIsHovered] = useState(false)
   const [isHit, setIsHit] = useState(false)
+  const isMobile = useMobile()
 
   // อัปเดต localHealth เมื่อ health จากภายนอกเปลี่ยน
   useEffect(() => {
@@ -117,8 +119,8 @@ function Block3D({
       castShadow
       receiveShadow
       onClick={handleClick}
-      onPointerOver={() => setIsHovered(true)}
-      onPointerOut={() => setIsHovered(false)}
+      onPointerOver={() => !isMobile && setIsHovered(true)}
+      onPointerOut={() => !isMobile && setIsHovered(false)}
       scale={isHit ? 0.9 : isHovered ? 1.05 : 1}
     >
       <boxGeometry args={size} />
@@ -146,7 +148,11 @@ function Block3D({
 }
 
 // Hit effect component
-function HitEffect({ position, intensity = 1 }: { position: [number, number, number]; intensity?: number }) {
+function HitEffect({
+  position,
+  intensity = 1,
+  isLowPerformance = false,
+}: { position: [number, number, number]; intensity?: number; isLowPerformance?: boolean }) {
   const groupRef = useRef<THREE.Group>(null)
   const [visible, setVisible] = useState(true)
 
@@ -165,6 +171,24 @@ function HitEffect({ position, intensity = 1 }: { position: [number, number, num
   })
 
   if (!visible) return null
+
+  // ลดจำนวน particles บนอุปกรณ์ประสิทธิภาพต่ำ
+  if (isLowPerformance) {
+    return (
+      <group ref={groupRef} position={position}>
+        <mesh>
+          <sphereGeometry args={[0.5, 8, 8]} />
+          <meshStandardMaterial
+            color="#FFD700"
+            emissive="#FFD700"
+            emissiveIntensity={intensity}
+            transparent={true}
+            opacity={0.7}
+          />
+        </mesh>
+      </group>
+    )
+  }
 
   return (
     <group ref={groupRef} position={position}>
@@ -414,6 +438,7 @@ function GameScene({
   onBlockDamage,
   clickIntensity,
   onBlockHit,
+  isLowPerformance,
 }: {
   level: number
   score: number
@@ -423,6 +448,7 @@ function GameScene({
   onBlockDamage: (id: number) => void
   clickIntensity: number
   onBlockHit: (position: [number, number, number]) => void
+  isLowPerformance: boolean
 }) {
   const { camera } = useThree()
   const [hitEffects, setHitEffects] = useState<{ id: number; position: [number, number, number] }[]>([])
@@ -430,6 +456,7 @@ function GameScene({
   const cameraShakeRef = useRef({ x: 0, y: 0, intensity: 0 })
   const [woodChips, setWoodChips] = useState<{ id: number; position: [number, number, number]; scale: number }[]>([])
   const woodChipCounter = useRef(0)
+  const isMobile = useMobile()
 
   // เลือกสภาพแวดล้อมตามระดับ
   const getEnvironment = () => {
@@ -480,8 +507,8 @@ function GameScene({
     const newEffectId = effectIdCounter.current++
     setHitEffects((prev) => [...prev, { id: newEffectId, position }])
 
-    // Add wood chips
-    const chipCount = Math.floor(3 + Math.random() * 5)
+    // ลดจำนวน wood chips บนอุปกรณ์ประสิทธิภาพต่ำ
+    const chipCount = isLowPerformance ? 2 : Math.floor(3 + Math.random() * 5)
     const newChips = []
 
     for (let i = 0; i < chipCount; i++) {
@@ -501,8 +528,8 @@ function GameScene({
     setWoodChips((prev) => [...prev, ...newChips])
 
     // Remove old wood chips if there are too many
-    if (woodChips.length > 30) {
-      setWoodChips((prev) => prev.slice(prev.length - 30))
+    if (woodChips.length > (isLowPerformance ? 10 : 30)) {
+      setWoodChips((prev) => prev.slice(prev.length - (isLowPerformance ? 10 : 30)))
     }
 
     // Remove effect after animation
@@ -528,17 +555,25 @@ function GameScene({
         position={[10, 10, 10]}
         intensity={environment === "night" ? 0.7 : 1}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={isLowPerformance ? 1024 : 2048}
+        shadow-mapSize-height={isLowPerformance ? 1024 : 2048}
       />
 
-      {/* สภาพแวดล้อมตามระดับ */}
+      {/* สภาพแวดล้อมตามระดับ - ลดความซับซ้อนบนอุปกรณ์ประสิทธิภาพต่ำ */}
       {environment === "day" && <Sky sunPosition={[0, 1, 0]} />}
       {environment === "sunset" && <Sky sunPosition={[0, 0.2, -1]} />}
       {environment === "night" && (
-        <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+        <Stars
+          radius={100}
+          depth={50}
+          count={isLowPerformance ? 2000 : 5000}
+          factor={4}
+          saturation={0}
+          fade
+          speed={1}
+        />
       )}
-      {environment === "storm" && (
+      {environment === "storm" && !isLowPerformance && (
         <>
           <Sky sunPosition={[0, 0.1, -1]} turbidity={10} rayleigh={1} />
           <Cloud position={[0, 15, -10]} speed={0.4} opacity={0.7} width={20} depth={1.5} />
@@ -557,18 +592,28 @@ function GameScene({
           )}
         </>
       )}
+      {environment === "storm" && isLowPerformance && <Sky sunPosition={[0, 0.1, -1]} turbidity={10} rayleigh={1} />}
 
       {/* Hit effects */}
       {hitEffects.map((effect) => (
-        <ParticleEffect key={effect.id} position={effect.position} intensity={clickIntensity} />
+        <ParticleEffect
+          key={effect.id}
+          position={effect.position}
+          intensity={clickIntensity}
+          isLowPerformance={isLowPerformance}
+        />
       ))}
 
-      {/* Wood chips */}
+      {/* Wood chips - ลดจำนวนบนอุปกรณ์ประสิทธิภาพต่ำ */}
       {woodChips.map((chip) => (
         <FloatingWoodChip key={chip.id} position={chip.position} scale={chip.scale} />
       ))}
 
-      <Physics>
+      <Physics
+        // ลดความซับซ้อนของฟิสิกส์บนอุปกรณ์ประสิทธิภาพต่ำ
+        iterations={isLowPerformance ? 5 : 10}
+        tolerance={isLowPerformance ? 0.002 : 0.0001}
+      >
         <Floor position={[0, -0.5, 0]} />
 
         {/* Game blocks */}
@@ -593,11 +638,15 @@ function GameScene({
       <ScoreIndicator score={score} />
       <TimerIndicator time={timeLeft} />
 
-      {/* องค์ประกอบตกแต่งเพิ่มเติม */}
-      <Axe position={[5, 0, 5]} rotation={[0, Math.PI / 4, 0]} />
-      <Axe position={[-5, 0, 5]} rotation={[0, -Math.PI / 4, 0]} />
-      <WoodStump position={[-4, -0.4, 4]} />
-      <WoodStump position={[4, -0.4, 4]} />
+      {/* องค์ประกอบตกแต่งเพิ่มเติม - ลดจำนวนบนอุปกรณ์ประสิทธิภาพต่ำ */}
+      {!isLowPerformance && (
+        <>
+          <Axe position={[5, 0, 5]} rotation={[0, Math.PI / 4, 0]} />
+          <Axe position={[-5, 0, 5]} rotation={[0, -Math.PI / 4, 0]} />
+          <WoodStump position={[-4, -0.4, 4]} />
+          <WoodStump position={[4, -0.4, 4]} />
+        </>
+      )}
 
       <OrbitControls
         enableZoom={false}
@@ -606,7 +655,7 @@ function GameScene({
         minPolarAngle={Math.PI / 6}
         enableDamping={true}
         dampingFactor={0.05}
-        enableRotate={window.innerWidth > 768} // ปิดการหมุนบนมือถือ
+        enableRotate={!isMobile} // ปิดการหมุนบนมือถือ
       />
     </>
   )
@@ -616,6 +665,7 @@ function GameScene({
 function StartScene({ onStartGame }: { onStartGame: () => void }) {
   const { camera } = useThree()
   const cameraRef = useRef({ x: 0, y: 5, z: 10 })
+  const isMobile = useMobile()
 
   // Set camera position
   useEffect(() => {
@@ -627,10 +677,12 @@ function StartScene({ onStartGame }: { onStartGame: () => void }) {
   useFrame(({ clock }) => {
     const time = clock.getElapsedTime()
 
-    // Gentle camera movement
-    camera.position.x = Math.sin(time * 0.2) * 2
-    camera.position.y = 5 + Math.sin(time * 0.1) * 0.5
-    camera.position.z = 10 + Math.cos(time * 0.15) * 1
+    // Gentle camera movement - ลดความซับซ้อนบนมือถือ
+    if (!isMobile) {
+      camera.position.x = Math.sin(time * 0.2) * 2
+      camera.position.y = 5 + Math.sin(time * 0.1) * 0.5
+      camera.position.z = 10 + Math.cos(time * 0.15) * 1
+    }
 
     camera.lookAt(0, 2, 0)
   })
@@ -647,11 +699,11 @@ function StartScene({ onStartGame }: { onStartGame: () => void }) {
         position={[10, 10, 10]}
         intensity={1}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
       />
 
-      <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+      <Stars radius={100} depth={50} count={isMobile ? 2000 : 5000} factor={4} saturation={0} fade speed={1} />
 
       {/* Title */}
       <group position={[0, 4, 0]} onClick={handleClick}>
@@ -689,12 +741,22 @@ function StartScene({ onStartGame }: { onStartGame: () => void }) {
         </Center>
       </group>
 
-      {/* Decorative trees */}
-      <Tree3D position={[-5, -0.5, -2]} scale={1.2} />
-      <Tree3D position={[5, -0.5, -3]} scale={1.5} />
-      <Tree3D position={[-3, -0.5, -5]} scale={1} />
-      <Tree3D position={[4, -0.5, -4]} scale={1.3} />
-      <Tree3D position={[0, -0.5, -6]} scale={1.4} />
+      {/* Decorative trees - ลดจำนวนบนมือถือ */}
+      {!isMobile ? (
+        <>
+          <Tree3D position={[-5, -0.5, -2]} scale={1.2} />
+          <Tree3D position={[5, -0.5, -3]} scale={1.5} />
+          <Tree3D position={[-3, -0.5, -5]} scale={1} />
+          <Tree3D position={[4, -0.5, -4]} scale={1.3} />
+          <Tree3D position={[0, -0.5, -6]} scale={1.4} />
+        </>
+      ) : (
+        <>
+          <Tree3D position={[-4, -0.5, -3]} scale={1.2} />
+          <Tree3D position={[4, -0.5, -3]} scale={1.5} />
+          <Tree3D position={[0, -0.5, -5]} scale={1.3} />
+        </>
+      )}
 
       {/* Floor */}
       <mesh position={[0, -0.5, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -702,14 +764,26 @@ function StartScene({ onStartGame }: { onStartGame: () => void }) {
         <meshStandardMaterial color="#5D4037" />
       </mesh>
 
-      <OrbitControls enableZoom={false} enablePan={false} maxPolarAngle={Math.PI / 2.5} minPolarAngle={Math.PI / 6} />
+      <OrbitControls
+        enableZoom={false}
+        enablePan={false}
+        maxPolarAngle={Math.PI / 2.5}
+        minPolarAngle={Math.PI / 6}
+        enableRotate={!isMobile}
+      />
     </>
   )
 }
 
 // Level complete scene
-function LevelCompleteScene({ level, score, onNextLevel }: { level: number; score: number; onNextLevel: () => void }) {
+function LevelCompleteScene({
+  level,
+  score,
+  onNextLevel,
+  isLowPerformance,
+}: { level: number; score: number; onNextLevel: () => void; isLowPerformance: boolean }) {
   const { camera } = useThree()
+  const isMobile = useMobile()
 
   // Set camera position
   useEffect(() => {
@@ -729,11 +803,11 @@ function LevelCompleteScene({ level, score, onNextLevel }: { level: number; scor
         position={[10, 10, 10]}
         intensity={1}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={isLowPerformance ? 1024 : 2048}
+        shadow-mapSize-height={isLowPerformance ? 1024 : 2048}
       />
 
-      <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+      <Stars radius={100} depth={50} count={isLowPerformance ? 2000 : 5000} factor={4} saturation={0} fade speed={1} />
 
       {/* Level complete text */}
       <group position={[0, 4, 0]}>
@@ -806,7 +880,13 @@ function LevelCompleteScene({ level, score, onNextLevel }: { level: number; scor
         </mesh>
       </group>
 
-      <OrbitControls enableZoom={false} enablePan={false} maxPolarAngle={Math.PI / 2.5} minPolarAngle={Math.PI / 6} />
+      <OrbitControls
+        enableZoom={false}
+        enablePan={false}
+        maxPolarAngle={Math.PI / 2.5}
+        minPolarAngle={Math.PI / 6}
+        enableRotate={!isMobile}
+      />
     </>
   )
 }
@@ -816,8 +896,10 @@ function GameOverScene({
   score,
   onRestart,
   onBackToMenu,
-}: { score: number; onRestart: () => void; onBackToMenu: () => void }) {
+  isLowPerformance,
+}: { score: number; onRestart: () => void; onBackToMenu: () => void; isLowPerformance: boolean }) {
   const { camera } = useThree()
+  const isMobile = useMobile()
 
   // Set camera position
   useEffect(() => {
@@ -841,11 +923,11 @@ function GameOverScene({
         position={[10, 10, 10]}
         intensity={1}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={isLowPerformance ? 1024 : 2048}
+        shadow-mapSize-height={isLowPerformance ? 1024 : 2048}
       />
 
-      <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+      <Stars radius={100} depth={50} count={isLowPerformance ? 2000 : 5000} factor={4} saturation={0} fade speed={1} />
 
       {/* Game over text */}
       <group position={[0, 4, 0]}>
@@ -919,7 +1001,13 @@ function GameOverScene({
         </Center>
       </group>
 
-      <OrbitControls enableZoom={false} enablePan={false} maxPolarAngle={Math.PI / 2.5} minPolarAngle={Math.PI / 6} />
+      <OrbitControls
+        enableZoom={false}
+        enablePan={false}
+        maxPolarAngle={Math.PI / 2.5}
+        minPolarAngle={Math.PI / 6}
+        enableRotate={!isMobile}
+      />
     </>
   )
 }
@@ -929,8 +1017,10 @@ function GameCompleteScene({
   score,
   onRestart,
   onBackToMenu,
-}: { score: number; onRestart: () => void; onBackToMenu: () => void }) {
+  isLowPerformance,
+}: { score: number; onRestart: () => void; onBackToMenu: () => void; isLowPerformance: boolean }) {
   const { camera } = useThree()
+  const isMobile = useMobile()
 
   // Set camera position
   useEffect(() => {
@@ -954,11 +1044,11 @@ function GameCompleteScene({
         position={[10, 10, 10]}
         intensity={1}
         castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={isLowPerformance ? 1024 : 2048}
+        shadow-mapSize-height={isLowPerformance ? 1024 : 2048}
       />
 
-      <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+      <Stars radius={100} depth={50} count={isLowPerformance ? 2000 : 5000} factor={4} saturation={0} fade speed={1} />
 
       {/* Game complete text */}
       <group position={[0, 4, 0]}>
@@ -1044,22 +1134,32 @@ function GameCompleteScene({
         </mesh>
       </group>
 
-      <OrbitControls enableZoom={false} enablePan={false} maxPolarAngle={Math.PI / 2.5} minPolarAngle={Math.PI / 6} />
+      <OrbitControls
+        enableZoom={false}
+        enablePan={false}
+        maxPolarAngle={Math.PI / 2.5}
+        minPolarAngle={Math.PI / 6}
+        enableRotate={!isMobile}
+      />
     </>
   )
 }
 
 // Particle effect component
-function ParticleEffect({ position, intensity = 1 }: { position: [number, number, number]; intensity: number }) {
+function ParticleEffect({
+  position,
+  intensity = 1,
+  isLowPerformance = false,
+}: { position: [number, number, number]; intensity: number; isLowPerformance: boolean }) {
   const [particles, setParticles] = useState<
     Array<{ position: [number, number, number]; velocity: [number, number, number]; life: number }>
   >([])
   const groupRef = useRef<THREE.Group>(null)
 
   useEffect(() => {
-    // Create particles
+    // Create particles - ลดจำนวนบนอุปกรณ์ประสิทธิภาพต่ำ
     const newParticles = []
-    const particleCount = Math.floor(10 * intensity)
+    const particleCount = Math.floor((isLowPerformance ? 5 : 10) * intensity)
 
     for (let i = 0; i < particleCount; i++) {
       const angle = Math.random() * Math.PI * 2
@@ -1076,7 +1176,7 @@ function ParticleEffect({ position, intensity = 1 }: { position: [number, number
     }
 
     setParticles(newParticles)
-  }, [position, intensity])
+  }, [position, intensity, isLowPerformance])
 
   useFrame(() => {
     setParticles((currentParticles) =>
@@ -1103,7 +1203,9 @@ function ParticleEffect({ position, intensity = 1 }: { position: [number, number
     <group ref={groupRef}>
       {particles.map((particle, i) => (
         <mesh key={i} position={particle.position}>
-          <sphereGeometry args={[0.1 * intensity * particle.life, 8, 8]} />
+          <sphereGeometry
+            args={[0.1 * intensity * particle.life, isLowPerformance ? 4 : 8, isLowPerformance ? 4 : 8]}
+          />
           <meshStandardMaterial
             color="#FFD700"
             emissive="#FFD700"
@@ -1132,6 +1234,7 @@ export default function BlockBreaker3D() {
   const lastClickTimeRef = useRef(0)
   const [hitPositions, setHitPositions] = useState<[number, number, number][]>([])
   const [isLowPerformance, setIsLowPerformance] = useState(false)
+  const isMobile = useMobile()
 
   useEffect(() => {
     // ตรวจสอบว่าเป็นมือถือหรือไม่
@@ -1166,37 +1269,47 @@ export default function BlockBreaker3D() {
   }, [])
 
   // Level configurations
-  const getLevelConfig = useCallback((level: number): LevelConfig => {
-    // Increase complexity with level
-    const baseBlocks = 6
-    const additionalBlocks = Math.min(level * 2, 20)
-    const totalBlocks = baseBlocks + additionalBlocks
+  const getLevelConfig = useCallback(
+    (level: number): LevelConfig => {
+      // Increase complexity with level
+      const baseBlocks = 6
+      const additionalBlocks = Math.min(level * 2, 20)
+      const totalBlocks = baseBlocks + additionalBlocks
 
-    // Determine grid size based on level
-    let rows = 2
-    let columns = 3
-    let layers = 1
+      // Determine grid size based on level
+      let rows = 2
+      let columns = 3
+      let layers = 1
 
-    if (level > 3) {
-      rows = 3
-      columns = 4
-      layers = 2
-    }
-    if (level > 6) {
-      rows = 4
-      columns = 5
-      layers = 3
-    }
+      if (level > 3) {
+        rows = 3
+        columns = 4
+        layers = 2
+      }
+      if (level > 6) {
+        rows = 4
+        columns = 5
+        layers = 3
+      }
 
-    return {
-      blockCount: totalBlocks,
-      blockHealth: Math.ceil(level * 1.2),
-      timeLimit: 10, // 10 seconds per level
-      rows,
-      columns,
-      layers,
-    }
-  }, [])
+      // ลดความซับซ้อนบนอุปกรณ์ประสิทธิภาพต่ำ
+      if (isLowPerformance) {
+        rows = Math.max(2, Math.floor(rows * 0.7))
+        columns = Math.max(2, Math.floor(columns * 0.7))
+        layers = Math.max(1, Math.floor(layers * 0.7))
+      }
+
+      return {
+        blockCount: isLowPerformance ? Math.floor(totalBlocks * 0.7) : totalBlocks,
+        blockHealth: Math.ceil(level * 1.2),
+        timeLimit: 10, // 10 seconds per level
+        rows,
+        columns,
+        layers,
+      }
+    },
+    [isLowPerformance],
+  )
 
   // Initialize level
   const initializeLevel = useCallback(() => {
@@ -1438,17 +1551,35 @@ export default function BlockBreaker3D() {
             onBlockDamage={handleBlockDamage}
             clickIntensity={clickIntensity}
             onBlockHit={handleBlockHit}
+            isLowPerformance={isLowPerformance}
           />
         )}
 
         {gameState === "levelComplete" && (
-          <LevelCompleteScene level={level} score={score} onNextLevel={startNextLevel} />
+          <LevelCompleteScene
+            level={level}
+            score={score}
+            onNextLevel={startNextLevel}
+            isLowPerformance={isLowPerformance}
+          />
         )}
 
-        {gameState === "gameOver" && <GameOverScene score={score} onRestart={startGame} onBackToMenu={backToMenu} />}
+        {gameState === "gameOver" && (
+          <GameOverScene
+            score={score}
+            onRestart={startGame}
+            onBackToMenu={backToMenu}
+            isLowPerformance={isLowPerformance}
+          />
+        )}
 
         {gameState === "gameComplete" && (
-          <GameCompleteScene score={score} onRestart={startGame} onBackToMenu={backToMenu} />
+          <GameCompleteScene
+            score={score}
+            onRestart={startGame}
+            onBackToMenu={backToMenu}
+            isLowPerformance={isLowPerformance}
+          />
         )}
 
         <EffectComposer enabled={!isLowPerformance}>
