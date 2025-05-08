@@ -195,7 +195,7 @@ function HitEffect({
   return (
     <group ref={groupRef} position={position}>
       <mesh>
-        <sphereGeometry args={[0.5, 16, 16]} />
+        <sphereGeometry args={[0.5, 8, 8]} />
         <meshStandardMaterial
           color="#FFD700"
           emissive="#FFD700"
@@ -283,13 +283,13 @@ function Tree3D({ position, scale = 1 }: { position: [number, number, number]; s
     <group position={position} scale={[scale, scale, scale]}>
       {/* Trunk */}
       <mesh ref={trunkRef} castShadow receiveShadow position={[0, 0.75, 0]}>
-        <cylinderGeometry args={[0.2, 0.3, 1.5, 8]} />
+        <cylinderGeometry args={[0.2, 0.3, 1.5, 6]} />
         <meshStandardMaterial color="#8B4513" roughness={0.8} />
       </mesh>
 
       {/* Leaves */}
       <mesh ref={leavesRef} castShadow position={[0, 1.5, 0]}>
-        <sphereGeometry args={[0.8, 16, 16]} />
+        <sphereGeometry args={[0.5, 8, 8]} />
         <meshStandardMaterial color="#2E7D32" roughness={0.7} />
       </mesh>
     </group>
@@ -332,7 +332,7 @@ function ScoreIndicator({ score }: { score: number }) {
           {`${score}`}
         </Text>
         <mesh position={[-1, 0, 0]}>
-          <sphereGeometry args={[0.25, 16, 16]} />
+          <sphereGeometry args={[0.5, 8, 8]} />
           <meshStandardMaterial color="#FFD700" emissive="#FFD700" emissiveIntensity={0.5} />
         </mesh>
       </Float>
@@ -478,25 +478,24 @@ function GameScene({
   useFrame(({ clock }) => {
     if (cameraShakeRef.current.intensity > 0) {
       // Apply camera shake - ปรับปรุงให้สั่นมากขึ้น
-      const time = clock.getElapsedTime() * 30 // เพิ่มความถี่
-      const shakeX = Math.sin(time) * cameraShakeRef.current.intensity * 0.3
-      const shakeY = Math.cos(time * 1.2) * cameraShakeRef.current.intensity * 0.2
-      const shakeZ = Math.sin(time * 0.7) * cameraShakeRef.current.intensity * 0.15
+      const time = clock.getElapsedTime() * 20 // ลดลงจาก 30
+      const shakeX = Math.sin(time) * cameraShakeRef.current.intensity * 0.2 // ลดลงจาก 0.3
+      const shakeY = Math.cos(time) * cameraShakeRef.current.intensity * 0.1 // ลดลงจาก 0.2
 
-      camera.position.x += (cameraShakeRef.current.x + shakeX - camera.position.x) * 0.2
-      camera.position.y += (10 + shakeY - camera.position.y) * 0.2
-      camera.position.z += (10 + shakeZ - camera.position.z) * 0.2
+      camera.position.x += (cameraShakeRef.current.x + shakeX - camera.position.x) * 0.1 // ลดลงจาก 0.2
+      camera.position.y += (10 + shakeY - camera.position.y) * 0.1 // ลดลงจาก 0.2
+      camera.position.z += (10 - camera.position.z) * 0.1 // ลดลงจาก 0.2, ตัด shakeZ ออก
 
-      // ลดความเข้มของการสั่นช้าลง
-      cameraShakeRef.current.intensity *= 0.92
+      // ลดความเข้มของการสั่นเร็วขึ้น
+      cameraShakeRef.current.intensity *= 0.85 // เพิ่มจาก 0.92
       if (cameraShakeRef.current.intensity < 0.01) {
         cameraShakeRef.current.intensity = 0
       }
     } else {
-      // Smooth return to original position
-      camera.position.x += (0 - camera.position.x) * 0.05
-      camera.position.y += (10 - camera.position.y) * 0.05
-      camera.position.z += (10 - camera.position.z) * 0.05
+      // Smooth return to original position - ลดความซับซ้อน
+      camera.position.x += (0 - camera.position.x) * 0.03 // ลดลงจาก 0.05
+      camera.position.y += (10 - camera.position.y) * 0.03 // ลดลงจาก 0.05
+      camera.position.z += (10 - camera.position.z) * 0.03 // ลดลงจาก 0.05
     }
 
     // Always look at center
@@ -504,54 +503,50 @@ function GameScene({
   })
 
   // Handle block hit
-  const handleBlockHit = (position: [number, number, number]) => {
-    // Add hit effect
-    const newEffectId = effectIdCounter.current++
-    setHitEffects((prev) => [...prev, { id: newEffectId, position }])
+  const handleBlockHit = useCallback(
+    (position: [number, number, number]) => {
+      // ลดจำนวน hit effects ลงอย่างมาก
+      if (Math.random() > 0.5) {
+        // เพิ่มเงื่อนไขให้แสดงเอฟเฟกต์แค่ 50% ของการตี
+        const newEffectId = effectIdCounter.current++
+        setHitEffects((prev) => [...prev, { id: newEffectId, position }])
 
-    // ลดจำนวน wood chips ลงอย่างมาก
-    // ไม่สร้าง wood chips เลยถ้าเป็นอุปกรณ์ประสิทธิภาพต่ำ
-    if (!isLowPerformance) {
-      const chipCount = 1 // เหลือแค่ 1 ชิ้น
-      const newChips = []
+        // Remove effect after animation - ลดเวลาลง
+        setTimeout(() => {
+          setHitEffects((prev) => prev.filter((effect) => effect.id !== newEffectId))
+        }, 200) // ลดลงจาก 300ms
+      }
 
-      for (let i = 0; i < chipCount; i++) {
-        const offset = [(Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5]
-
+      // ลดการสร้าง wood chips
+      if (!isLowPerformance && Math.random() > 0.7) {
+        // แสดงเศษไม้แค่ 30% ของการตี
+        const newChips = []
         newChips.push({
           id: woodChipCounter.current++,
-          position: [position[0] + offset[0], position[1] + offset[1], position[2] + offset[2]] as [
-            number,
-            number,
-            number,
-          ],
+          position: position as [number, number, number],
           scale: 0.5 + Math.random() * 0.5,
         })
+        setWoodChips((prev) => [...prev, ...newChips])
       }
-
-      setWoodChips((prev) => [...prev, ...newChips])
 
       // ลบ wood chips เก่าทิ้งเร็วขึ้น
-      if (woodChips.length > 5) {
-        setWoodChips((prev) => prev.slice(prev.length - 5))
+      if (woodChips.length > 3) {
+        // ลดลงจาก 5
+        setWoodChips((prev) => prev.slice(prev.length - 3))
       }
-    }
 
-    // Remove effect after animation - ลดเวลาลง
-    setTimeout(() => {
-      setHitEffects((prev) => prev.filter((effect) => effect.id !== newEffectId))
-    }, 300) // ลดลงจาก 800ms
+      // Apply camera shake - ลดความเข้มลง
+      cameraShakeRef.current = {
+        x: position[0] * 0.05, // ลดลงจาก 0.1
+        y: position[1] * 0.02, // ลดลงจาก 0.05
+        intensity: 0.2 * clickIntensity, // ลดลงจาก 0.3
+      }
 
-    // Apply camera shake - ลดความเข้มลง
-    cameraShakeRef.current = {
-      x: position[0] * 0.1, // ลดลงจาก 0.2
-      y: position[1] * 0.05, // ลดลงจาก 0.1
-      intensity: 0.3 * clickIntensity, // ลดลงจาก 0.5
-    }
-
-    // Pass to parent component
-    onBlockHit(position)
-  }
+      // Pass to parent component
+      onBlockHit(position)
+    },
+    [clickIntensity, isLowPerformance],
+  )
 
   return (
     <>
@@ -571,7 +566,7 @@ function GameScene({
         <Stars
           radius={100}
           depth={50}
-          count={isLowPerformance ? 2000 : 5000}
+          count={isLowPerformance ? 1000 : 2000} // ลดลงจาก 2000 และ 5000
           factor={4}
           saturation={0}
           fade
@@ -616,13 +611,13 @@ function GameScene({
 
       <Physics
         // ปรับแต่งการตั้งค่าฟิสิกส์ให้เบาลง
-        iterations={isLowPerformance ? 3 : 5} // ลดลงจาก 10
-        tolerance={0.002} // เพิ่มค่า tolerance
+        iterations={isLowPerformance ? 1 : 3} // ลดลงจาก 3 และ 5
+        tolerance={0.005} // เพิ่มค่า tolerance จาก 0.002
         defaultContactMaterial={{
-          friction: 0.2, // ลดความเสียดทาน
-          restitution: 0.3, // ลดการกระเด้ง
+          friction: 0.1, // ลดความเสียดทาน
+          restitution: 0.2, // ลดการกระเด้ง
         }}
-        gravity={[0, -3, 0]} // ลดแรงโน้มถ่วงลง
+        gravity={[0, -2, 0]} // ลดแรงโน้มถ่วงลง
       >
         <Floor position={[0, -0.5, 0]} />
 
@@ -663,8 +658,7 @@ function GameScene({
         enablePan={false}
         maxPolarAngle={Math.PI / 2.5}
         minPolarAngle={Math.PI / 6}
-        enableDamping={true}
-        dampingFactor={0.05}
+        enableDamping={false} // ปิดการใช้งาน damping
         enableRotate={!isMobile} // ปิดการหมุนบนมือถือ
       />
     </>
@@ -713,7 +707,7 @@ function StartScene({ onStartGame }: { onStartGame: () => void }) {
         shadow-mapSize-height={1024}
       />
 
-      <Stars radius={100} depth={50} count={isMobile ? 2000 : 5000} factor={4} saturation={0} fade speed={1} />
+      <Stars radius={100} depth={50} count={isMobile ? 1000 : 2000} factor={4} saturation={0} fade speed={1} />
 
       {/* Title */}
       <group position={[0, 4, 0]} onClick={handleClick}>
@@ -779,6 +773,7 @@ function StartScene({ onStartGame }: { onStartGame: () => void }) {
         enablePan={false}
         maxPolarAngle={Math.PI / 2.5}
         minPolarAngle={Math.PI / 6}
+        enableDamping={false}
         enableRotate={!isMobile}
       />
     </>
@@ -817,7 +812,7 @@ function LevelCompleteScene({
         shadow-mapSize-height={isLowPerformance ? 1024 : 2048}
       />
 
-      <Stars radius={100} depth={50} count={isLowPerformance ? 2000 : 5000} factor={4} saturation={0} fade speed={1} />
+      <Stars radius={100} depth={50} count={isLowPerformance ? 1000 : 2000} factor={4} saturation={0} fade speed={1} />
 
       {/* Level complete text */}
       <group position={[0, 4, 0]}>
@@ -885,7 +880,7 @@ function LevelCompleteScene({
           <meshStandardMaterial color="#FFD700" metalness={0.8} roughness={0.2} />
         </mesh>
         <mesh position={[0, 1.5, 0]} castShadow>
-          <sphereGeometry args={[0.4, 16, 16]} />
+          <sphereGeometry args={[0.5, 8, 8]} />
           <meshStandardMaterial color="#FFD700" metalness={0.8} roughness={0.2} />
         </mesh>
       </group>
@@ -895,6 +890,7 @@ function LevelCompleteScene({
         enablePan={false}
         maxPolarAngle={Math.PI / 2.5}
         minPolarAngle={Math.PI / 6}
+        enableDamping={false}
         enableRotate={!isMobile}
       />
     </>
@@ -937,7 +933,7 @@ function GameOverScene({
         shadow-mapSize-height={isLowPerformance ? 1024 : 2048}
       />
 
-      <Stars radius={100} depth={50} count={isLowPerformance ? 2000 : 5000} factor={4} saturation={0} fade speed={1} />
+      <Stars radius={100} depth={50} count={isLowPerformance ? 1000 : 2000} factor={4} saturation={0} fade speed={1} />
 
       {/* Game over text */}
       <group position={[0, 4, 0]}>
@@ -1016,6 +1012,7 @@ function GameOverScene({
         enablePan={false}
         maxPolarAngle={Math.PI / 2.5}
         minPolarAngle={Math.PI / 6}
+        enableDamping={false}
         enableRotate={!isMobile}
       />
     </>
@@ -1058,7 +1055,7 @@ function GameCompleteScene({
         shadow-mapSize-height={isLowPerformance ? 1024 : 2048}
       />
 
-      <Stars radius={100} depth={50} count={isLowPerformance ? 2000 : 5000} factor={4} saturation={0} fade speed={1} />
+      <Stars radius={100} depth={50} count={isLowPerformance ? 1000 : 2000} factor={4} saturation={0} fade speed={1} />
 
       {/* Game complete text */}
       <group position={[0, 4, 0]}>
@@ -1139,7 +1136,7 @@ function GameCompleteScene({
           <meshStandardMaterial color="#FFD700" metalness={0.8} roughness={0.2} />
         </mesh>
         <mesh position={[0, 1.5, 0]} castShadow>
-          <sphereGeometry args={[0.4, 16, 16]} />
+          <sphereGeometry args={[0.5, 8, 8]} />
           <meshStandardMaterial color="#FFD700" metalness={0.8} roughness={0.2} />
         </mesh>
       </group>
@@ -1149,6 +1146,7 @@ function GameCompleteScene({
         enablePan={false}
         maxPolarAngle={Math.PI / 2.5}
         minPolarAngle={Math.PI / 6}
+        enableDamping={false}
         enableRotate={!isMobile}
       />
     </>
@@ -1169,8 +1167,8 @@ function ParticleEffect({
   useEffect(() => {
     // ลดจำนวน particles ลงอย่างมาก
     const newParticles = []
-    // ลดจำนวน particles ลงเหลือแค่ 2-3 อัน
-    const particleCount = Math.floor((isLowPerformance ? 2 : 3) * intensity)
+    // ลดจำนวน particles ลงเหลือแค่ 1-2 อัน
+    const particleCount = Math.floor((isLowPerformance ? 1 : 2) * intensity)
 
     for (let i = 0; i < particleCount; i++) {
       const angle = Math.random() * Math.PI * 2
@@ -1260,33 +1258,9 @@ export default function BlockBreaker3D() {
         lowMemory = (navigator as any).deviceMemory < 4
       }
 
-      // ตรวจสอบ FPS
-      let lastTime = performance.now()
-      let frames = 0
-      let testDuration = 0
-      let lowFps = false
-
-      const checkFps = () => {
-        const now = performance.now()
-        frames++
-        testDuration += now - lastTime
-        lastTime = now
-
-        if (testDuration >= 500) {
-          // ทดสอบแค่ 0.5 วินาที
-          const fps = (frames * 1000) / testDuration
-          lowFps = fps < 40
-
-          // ตัดสินใจจากข้อมูลทั้งหมด
-          const isLowPerf = lowFps || lowMemory || cpuCores <= 4 || isMobile
-          setIsLowPerformance(isLowPerf)
-          return
-        }
-
-        requestAnimationFrame(checkFps)
-      }
-
-      requestAnimationFrame(checkFps)
+      // ตัดสินใจจากข้อมูลทั้งหมด - เพิ่มความเข้มงวดในการตรวจสอบ
+      const isLowPerf = lowMemory || cpuCores <= 4 || isMobile || true // เพิ่ม true เพื่อบังคับให้ใช้โหมดประสิทธิภาพต่ำเสมอ
+      setIsLowPerformance(isLowPerf)
     }
 
     checkPerformance()
@@ -1318,14 +1292,14 @@ export default function BlockBreaker3D() {
 
       // ลดความซับซ้อนบนอุปกรณ์ประสิทธิภาพต่ำ
       if (isLowPerformance) {
-        rows = Math.max(2, Math.floor(rows * 0.7))
-        columns = Math.max(2, Math.floor(columns * 0.7))
-        layers = Math.max(1, Math.floor(layers * 0.7))
+        rows = Math.max(2, Math.floor(rows * 0.5)) // ลดลงจาก 0.7
+        columns = Math.max(2, Math.floor(columns * 0.5)) // ลดลงจาก 0.7
+        layers = 1 // จำกัดให้มีแค่ 1 layer เสมอ
       }
 
       return {
-        blockCount: isLowPerformance ? Math.floor(totalBlocks * 0.7) : totalBlocks,
-        blockHealth: Math.ceil(level * 1.2),
+        blockCount: isLowPerformance ? Math.floor(totalBlocks * 0.5) : totalBlocks, // ลดลงจาก 0.7
+        blockHealth: Math.ceil(level * 1.0), // ลดลงจาก 1.2
         timeLimit: 10, // 10 seconds per level
         rows,
         columns,
@@ -1609,13 +1583,8 @@ export default function BlockBreaker3D() {
           />
         )}
 
-        <EffectComposer enabled={!isLowPerformance && !isMobile}>
-          <Bloom
-            luminanceThreshold={0.3} // เพิ่มขึ้นจาก 0.2
-            luminanceSmoothing={0.9}
-            height={100} // ลดลงจาก 300
-            intensity={0.8} // ลดลงจาก 1.5
-          />
+        <EffectComposer enabled={false}>
+          <Bloom luminanceThreshold={0.3} luminanceSmoothing={0.9} height={100} intensity={0.8} />
         </EffectComposer>
       </Canvas>
     </div>

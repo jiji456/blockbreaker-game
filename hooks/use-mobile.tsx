@@ -13,13 +13,16 @@ export function useMobile(): boolean {
       const mobileRegex = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i
       const isMobileDevice = mobileRegex.test(userAgent.toLowerCase())
 
-      // ตรวจสอบจากขนาดหน้าจอ
-      const isMobileScreen = window.innerWidth < 768
+      // ตรวจสอบจากขนาดหน้าจอ - เพิ่มความเข้มงวด
+      const isMobileScreen = window.innerWidth < 1024 // เพิ่มจาก 768 เป็น 1024 เพื่อให้อุปกรณ์ที่มีหน้าจอขนาดกลางถูกจัดเป็นมือถือด้วย
 
       // ตรวจสอบจาก touch capability
       const hasTouchScreen = "ontouchstart" in window || navigator.maxTouchPoints > 0
 
-      setIsMobile(isMobileDevice || isMobileScreen || hasTouchScreen)
+      // ตรวจสอบจากประสิทธิภาพ
+      const hasLowPerformance = navigator.hardwareConcurrency ? navigator.hardwareConcurrency <= 4 : true
+
+      setIsMobile(isMobileDevice || isMobileScreen || hasTouchScreen || hasLowPerformance)
     }
 
     // ตรวจสอบตอนโหลดหน้า
