@@ -2,38 +2,36 @@
 
 import { useState, useEffect } from "react"
 
-export function useMobile(): boolean {
+export function useMobile() {
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
-    // ตรวจสอบว่าเป็นมือถือหรือไม่
+    // Function to check if the device is mobile
     const checkMobile = () => {
-      // ตรวจสอบจาก User Agent
       const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera
-      const mobileRegex = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i
-      const isMobileDevice = mobileRegex.test(userAgent.toLowerCase())
+      const mobileRegex =
+        /(android|bb\d+|meego).+mobile|avantgo|bada\/|blackberry|blazer|compal|elaine|fennec|hiptop|iemobile|ip(hone|od)|iris|kindle|lge |maemo|midp|mmp|mobile.+firefox|netfront|opera m(ob|in)i|palm( os)?|phone|p(ixi|re)\/|plucker|pocket|psp|series(4|6)0|symbian|treo|up\.(browser|link)|vodafone|wap|windows ce|xda|xiino/i
 
-      // ตรวจสอบจากขนาดหน้าจอ - เพิ่มความเข้มงวด
-      const isMobileScreen = window.innerWidth < 1024 // เพิ่มจาก 768 เป็น 1024 เพื่อให้อุปกรณ์ที่มีหน้าจอขนาดกลางถูกจัดเป็นมือถือด้วย
+      // Check if screen width is less than 768px (typical mobile breakpoint)
+      const isSmallScreen = window.innerWidth < 768
 
-      // ตรวจสอบจาก touch capability
-      const hasTouchScreen = "ontouchstart" in window || navigator.maxTouchPoints > 0
-
-      // ตรวจสอบจากประสิทธิภาพ
-      const hasLowPerformance = navigator.hardwareConcurrency ? navigator.hardwareConcurrency <= 4 : true
-
-      setIsMobile(isMobileDevice || isMobileScreen || hasTouchScreen || hasLowPerformance)
+      // Return true if either the user agent matches mobile patterns or the screen is small
+      return mobileRegex.test(userAgent) || isSmallScreen
     }
 
-    // ตรวจสอบตอนโหลดหน้า
-    checkMobile()
+    // Set initial value
+    setIsMobile(checkMobile())
 
-    // ตรวจสอบเมื่อมีการเปลี่ยนขนาดหน้าจอ
-    window.addEventListener("resize", checkMobile)
+    // Add event listener for window resize
+    const handleResize = () => {
+      setIsMobile(checkMobile())
+    }
 
-    // Cleanup
+    window.addEventListener("resize", handleResize)
+
+    // Clean up event listener
     return () => {
-      window.removeEventListener("resize", checkMobile)
+      window.removeEventListener("resize", handleResize)
     }
   }, [])
 

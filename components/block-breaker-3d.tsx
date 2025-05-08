@@ -17,9 +17,16 @@ type Block3DProps = {
   health: number
   maxHealth: number
   id: number
+  blockType: BlockType
   onDestroy: (id: number) => void
   onDamage: (id: number) => void
 }
+
+// Block types
+type BlockType = "normal" | "explosive" | "heavy" | "bonus" | "shield"
+
+// Power-up type
+type PowerUpType = "hammer" | "bomb" | "freeze" | "multiplier"
 
 // Level configuration
 type LevelConfig = {
@@ -29,6 +36,12 @@ type LevelConfig = {
   rows: number
   columns: number
   layers: number
+  specialBlocks: {
+    explosive: number
+    heavy: number
+    bonus: number
+    shield: number
+  }
 }
 
 // Wood colors
@@ -54,21 +67,23 @@ function Block3D({
   health,
   maxHealth,
   id,
+  blockType,
   onDestroy,
   onDamage,
   onHit,
-}: Block3DProps & { onHit: (position: [number, number, number]) => void }) {
+}: Block3DProps & { onHit: (position: [number, number, number], blockType: BlockType) => void }) {
   const [ref, api] = useBox(() => ({
-    mass: 1,
+    mass: blockType === "heavy" ? 2 : 1,
     position,
     args: size,
-    linearDamping: 0.9, // เพิ่มการหน่วงเพื่อลดการเคลื่อนไหว
-    angularDamping: 0.9, // เพิ่มการหน่วงการหมุน
+    linearDamping: 0.9,
+    angularDamping: 0.9,
   }))
 
   const [localHealth, setLocalHealth] = useState(health)
   const [isHovered, setIsHovered] = useState(false)
   const [isHit, setIsHit] = useState(false)
+  const [emissiveIntensity, setEmissiveIntensity] = useState(0)
   const isMobile = useMobile()
 
   // อัปเดต localHealth เมื่อ health จากภายนอกเปลี่ยน
@@ -76,7 +91,23 @@ function Block3D({
     setLocalHealth(health)
   }, [health])
 
-  // Get color based on health percentage
+  // Get color based on block type
+  const getBlockColor = () => {
+    switch (blockType) {
+      case "explosive":
+        return "#FF5722" // สีส้มแดง
+      case "heavy":
+        return "#455A64" // สีเทาเข้ม
+      case "bonus":
+        return "#FFD700" // สีทอง
+      case "shield":
+        return "#2196F3" // สีฟ้า
+      default:
+        return getWoodColor()
+    }
+  }
+
+  // Get wood color based on health percentage
   const getWoodColor = () => {
     const healthPercentage = (localHealth / maxHealth) * 100
     if (healthPercentage > 66) {
@@ -88,16 +119,29 @@ function Block3D({
     }
   }
 
+  // Add subtle animation
+  useFrame(({ clock }) => {
+    if (blockType === "explosive") {
+      // บล็อคระเบิดจะมีการกระพริบ
+      setEmissiveIntensity(0.2 + Math.sin(clock.getElapsedTime() * 5) * 0.1)
+    } else if (blockType === "bonus") {
+      // บล็อคโบนัสจะหมุนเล็กน้อย
+      if (ref.current) {
+        ref.current.rotation.y = clock.getElapsedTime() * 0.5
+      }
+    }
+  })
+
   // Handle click/tap
   const handleClick = (e: any) => {
     e.stopPropagation()
     setIsHit(true)
 
-    // Apply force to make it look like it was hit - ลดแรงลง
-    api.applyImpulse([0, 3, 0], [0, 0, 0]) // ลดลงจาก 5
+    // Apply force to make it look like it was hit
+    api.applyImpulse([0, 3, 0], [0, 0, 0])
 
     // Trigger hit effect at this position
-    onHit(position)
+    onHit(position, blockType)
 
     // Reduce health
     const newHealth = localHealth - 1
@@ -112,7 +156,25 @@ function Block3D({
     }
 
     // Reset hit animation
-    setTimeout(() => setIsHit(false), 200) // ลดลงจาก 300
+    setTimeout(() => setIsHit(false), 200)
+  }
+
+  // Get emissive color based on state
+  const getEmissiveColor = () => {
+    if (blockType === "explosive") return "#FF5722"
+    if (blockType === "bonus") return "#FFD700"
+    if (isHit) return "#ff9500"
+    if (isHovered) return "#ffcc00"
+    return "#000000"
+  }
+
+  // Get emissive intensity based on state
+  const getEmissiveIntensity = () => {
+    if (blockType === "explosive") return emissiveIntensity
+    if (blockType === "bonus") return 0.2
+    if (isHit) return 0.3
+    if (isHovered) return 0.1
+    return 0
   }
 
   return (
@@ -123,15 +185,18 @@ function Block3D({
       onClick={handleClick}
       onPointerOver={() => !isMobile && setIsHovered(true)}
       onPointerOut={() => !isMobile && setIsHovered(false)}
-      scale={isHit ? 0.95 : isHovered ? 1.03 : 1} // ลดการเปลี่ยนขนาด
+      scale={isHit ? 0.95 : isHovered ? 1.03 : 1}
     >
-      <boxGeometry args={size} />
+      {blockType === "bonus" ? <octahedronGeometry args={[size[0] * 0.6, 0]} /> : <boxGeometry args={size} />}
+
       <meshStandardMaterial
-        color={getWoodColor()}
-        roughness={0.7}
-        metalness={0.1}
-        emissive={isHit ? "#ff9500" : isHovered ? "#ffcc00" : "#000000"}
-        emissiveIntensity={isHit ? 0.3 : isHovered ? 0.1 : 0} // ลดความเข้มลง
+        color={getBlockColor()}
+        roughness={blockType === "heavy" ? 0.9 : blockType === "bonus" ? 0.3 : 0.7}
+        metalness={blockType === "heavy" ? 0.4 : blockType === "bonus" ? 0.8 : 0.1}
+        emissive={getEmissiveColor()}
+        emissiveIntensity={getEmissiveIntensity()}
+        transparent={blockType === "shield"}
+        opacity={blockType === "shield" ? 0.8 : 1}
       />
 
       {/* Health indicator as 3D text */}
@@ -149,12 +214,98 @@ function Block3D({
   )
 }
 
+// Power-up component
+function PowerUp({
+  type,
+  position,
+  onCollect,
+}: { type: PowerUpType; position: [number, number, number]; onCollect: (type: PowerUpType) => void }) {
+  const meshRef = useRef<THREE.Mesh>(null)
+  const [isHovered, setIsHovered] = useState(false)
+  const isMobile = useMobile()
+
+  // Animation
+  useFrame(({ clock }) => {
+    if (meshRef.current) {
+      meshRef.current.rotation.y = clock.getElapsedTime()
+      meshRef.current.position.y = position[1] + Math.sin(clock.getElapsedTime() * 2) * 0.1
+    }
+  })
+
+  // Get color based on power-up type
+  const getColor = () => {
+    switch (type) {
+      case "hammer":
+        return "#FF9800" // สีส้ม
+      case "bomb":
+        return "#F44336" // สีแดง
+      case "freeze":
+        return "#2196F3" // สีฟ้า
+      case "multiplier":
+        return "#4CAF50" // สีเขียว
+      default:
+        return "#FFFFFF"
+    }
+  }
+
+  // Get icon based on power-up type
+  const getIcon = () => {
+    switch (type) {
+      case "hammer":
+        return "H"
+      case "bomb":
+        return "B"
+      case "freeze":
+        return "F"
+      case "multiplier":
+        return "x2"
+      default:
+        return "?"
+    }
+  }
+
+  // Handle click/tap
+  const handleClick = () => {
+    onCollect(type)
+  }
+
+  return (
+    <group position={position} onClick={handleClick}>
+      <mesh
+        ref={meshRef}
+        castShadow
+        onPointerOver={() => !isMobile && setIsHovered(true)}
+        onPointerOut={() => !isMobile && setIsHovered(false)}
+        scale={isHovered ? 1.1 : 1}
+      >
+        <sphereGeometry args={[0.4, 16, 16]} />
+        <meshStandardMaterial
+          color={getColor()}
+          emissive={getColor()}
+          emissiveIntensity={0.5}
+          metalness={0.8}
+          roughness={0.2}
+        />
+      </mesh>
+      <Text position={[0, 0, 0.5]} rotation={[0, 0, 0]} fontSize={0.3} color="white" anchorX="center" anchorY="middle">
+        {getIcon()}
+      </Text>
+    </group>
+  )
+}
+
 // Hit effect component
 function HitEffect({
   position,
   intensity = 1,
   isLowPerformance = false,
-}: { position: [number, number, number]; intensity?: number; isLowPerformance?: boolean }) {
+  blockType = "normal",
+}: {
+  position: [number, number, number]
+  intensity?: number
+  isLowPerformance?: boolean
+  blockType?: BlockType
+}) {
   const groupRef = useRef<THREE.Group>(null)
   const [visible, setVisible] = useState(true)
 
@@ -174,6 +325,22 @@ function HitEffect({
 
   if (!visible) return null
 
+  // Get effect color based on block type
+  const getEffectColor = () => {
+    switch (blockType) {
+      case "explosive":
+        return "#FF5722"
+      case "heavy":
+        return "#455A64"
+      case "bonus":
+        return "#FFD700"
+      case "shield":
+        return "#2196F3"
+      default:
+        return "#FFD700"
+    }
+  }
+
   // ลดจำนวน particles บนอุปกรณ์ประสิทธิภาพต่ำ
   if (isLowPerformance) {
     return (
@@ -181,8 +348,8 @@ function HitEffect({
         <mesh>
           <sphereGeometry args={[0.5, 8, 8]} />
           <meshStandardMaterial
-            color="#FFD700"
-            emissive="#FFD700"
+            color={getEffectColor()}
+            emissive={getEffectColor()}
             emissiveIntensity={intensity}
             transparent={true}
             opacity={0.7}
@@ -197,8 +364,8 @@ function HitEffect({
       <mesh>
         <sphereGeometry args={[0.5, 8, 8]} />
         <meshStandardMaterial
-          color="#FFD700"
-          emissive="#FFD700"
+          color={getEffectColor()}
+          emissive={getEffectColor()}
           emissiveIntensity={2 * intensity}
           transparent={true}
           opacity={0.7}
@@ -208,7 +375,99 @@ function HitEffect({
   )
 }
 
-// เพิ่มฟังก์ชัน FloatingWoodChip สำหรับเศษไม้ลอยในฉาก - แก้ไขให้ไม่ใช้ฟิสิกส์
+// Explosion effect component
+function ExplosionEffect({
+  position,
+  intensity = 1,
+  isLowPerformance = false,
+}: { position: [number, number, number]; intensity?: number; isLowPerformance?: boolean }) {
+  const groupRef = useRef<THREE.Group>(null)
+  const [visible, setVisible] = useState(true)
+  const [particles, setParticles] = useState<
+    Array<{ position: [number, number, number]; velocity: [number, number, number]; life: number }>
+  >([])
+
+  useEffect(() => {
+    // Create explosion particles
+    const newParticles = []
+    const particleCount = isLowPerformance ? 5 : 10
+
+    for (let i = 0; i < particleCount; i++) {
+      const angle = Math.random() * Math.PI * 2
+      const elevation = Math.random() * Math.PI - Math.PI / 2
+      const speed = 0.1 + Math.random() * 0.2 * intensity
+
+      newParticles.push({
+        position: [...position] as [number, number, number],
+        velocity: [
+          Math.cos(angle) * Math.cos(elevation) * speed,
+          Math.sin(elevation) * speed,
+          Math.sin(angle) * Math.cos(elevation) * speed,
+        ] as [number, number, number],
+        life: 1.0,
+      })
+    }
+
+    setParticles(newParticles)
+
+    const timer = setTimeout(() => {
+      setVisible(false)
+    }, 1000)
+
+    return () => clearTimeout(timer)
+  }, [position, intensity, isLowPerformance])
+
+  useFrame(() => {
+    setParticles((currentParticles) =>
+      currentParticles
+        .map((particle) => ({
+          ...particle,
+          position: [
+            particle.position[0] + particle.velocity[0],
+            particle.position[1] + particle.velocity[1],
+            particle.position[2] + particle.velocity[2],
+          ] as [number, number, number],
+          velocity: [
+            particle.velocity[0],
+            particle.velocity[1] - 0.003, // gravity
+            particle.velocity[2],
+          ] as [number, number, number],
+          life: particle.life - 0.02,
+        }))
+        .filter((particle) => particle.life > 0),
+    )
+  })
+
+  if (!visible && particles.length === 0) return null
+
+  return (
+    <group ref={groupRef}>
+      {/* Central explosion */}
+      {visible && (
+        <mesh position={position}>
+          <sphereGeometry args={[0.8 * intensity, 16, 16]} />
+          <meshStandardMaterial
+            color="#FF5722"
+            emissive="#FF9800"
+            emissiveIntensity={2}
+            transparent={true}
+            opacity={0.7}
+          />
+        </mesh>
+      )}
+
+      {/* Particles */}
+      {particles.map((particle, i) => (
+        <mesh key={i} position={particle.position}>
+          <sphereGeometry args={[0.2 * intensity * particle.life, 8, 8]} />
+          <meshBasicMaterial color="#FF9800" transparent={true} opacity={particle.life} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+// เพิ่มฟังก์ชัน FloatingWoodChip สำหรับเศษไม้ลอยในฉาก
 function FloatingWoodChip({ position, scale = 1 }: { position: [number, number, number]; scale?: number }) {
   const meshRef = useRef<THREE.Mesh>(null)
   const velocity = useRef<[number, number, number]>([
@@ -368,6 +627,109 @@ function TimerIndicator({ time }: { time: number }) {
   )
 }
 
+// Combo indicator
+function ComboIndicator({ combo, position = [0, 2, -3] }: { combo: number; position?: [number, number, number] }) {
+  const [visible, setVisible] = useState(false)
+  const [scale, setScale] = useState(0)
+
+  useEffect(() => {
+    if (combo > 1) {
+      setVisible(true)
+      setScale(1.5)
+
+      const timer = setTimeout(() => {
+        setScale(1)
+      }, 200)
+
+      const hideTimer = setTimeout(() => {
+        setVisible(false)
+      }, 2000)
+
+      return () => {
+        clearTimeout(timer)
+        clearTimeout(hideTimer)
+      }
+    }
+  }, [combo])
+
+  if (!visible) return null
+
+  return (
+    <group position={position}>
+      <Float speed={2} rotationIntensity={0.3} floatIntensity={0.5}>
+        <Text
+          position={[0, 0, 0]}
+          rotation={[0, 0, 0]}
+          fontSize={0.6 * scale}
+          color="#FF9800"
+          anchorX="center"
+          anchorY="middle"
+        >
+          {`COMBO x${combo}`}
+        </Text>
+      </Float>
+    </group>
+  )
+}
+
+// Active power-up indicator
+function PowerUpIndicator({
+  activePowerUp,
+  timeLeft,
+  position = [-4, 1.5, -5],
+}: { activePowerUp: PowerUpType | null; timeLeft: number; position?: [number, number, number] }) {
+  if (!activePowerUp) return null
+
+  // Get power-up name
+  const getPowerUpName = () => {
+    switch (activePowerUp) {
+      case "hammer":
+        return "SUPER HAMMER"
+      case "bomb":
+        return "BOMB"
+      case "freeze":
+        return "TIME FREEZE"
+      case "multiplier":
+        return "SCORE x2"
+      default:
+        return "POWER-UP"
+    }
+  }
+
+  // Get power-up color
+  const getPowerUpColor = () => {
+    switch (activePowerUp) {
+      case "hammer":
+        return "#FF9800"
+      case "bomb":
+        return "#F44336"
+      case "freeze":
+        return "#2196F3"
+      case "multiplier":
+        return "#4CAF50"
+      default:
+        return "#FFFFFF"
+    }
+  }
+
+  return (
+    <group position={position}>
+      <Float speed={1.5} rotationIntensity={0.2} floatIntensity={0.4}>
+        <Text
+          position={[0, 0, 0]}
+          rotation={[0, 0, 0]}
+          fontSize={0.3}
+          color={getPowerUpColor()}
+          anchorX="center"
+          anchorY="middle"
+        >
+          {`${getPowerUpName()}: ${timeLeft}s`}
+        </Text>
+      </Float>
+    </group>
+  )
+}
+
 // เพิ่มฟังก์ชัน Axe สำหรับแสดงขวานในฉาก
 function Axe({
   position = [3, 0, 3],
@@ -419,7 +781,7 @@ function WoodStump({ position = [-3, -0.4, 3] }: { position?: [number, number, n
         <meshStandardMaterial color="#A0522D" roughness={0.8} />
       </mesh>
 
-      {/* วงปีไม้ชั้นใน */}
+      {/* วงปีไม้ไม้ชั้นใน */}
       {[0.6, 0.4, 0.2].map((radius, i) => (
         <mesh key={i} receiveShadow position={[0, 0.211, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[radius - 0.05, radius, 32]} />
@@ -436,25 +798,41 @@ function GameScene({
   score,
   timeLeft,
   blocks,
+  powerUps,
+  combo,
+  activePowerUp,
+  powerUpTimeLeft,
   onBlockDestroy,
   onBlockDamage,
   clickIntensity,
   onBlockHit,
+  onPowerUpCollect,
   isLowPerformance,
 }: {
   level: number
   score: number
   timeLeft: number
   blocks: any[]
+  powerUps: { type: PowerUpType; position: [number, number, number] }[]
+  combo: number
+  activePowerUp: PowerUpType | null
+  powerUpTimeLeft: number
   onBlockDestroy: (id: number) => void
   onBlockDamage: (id: number) => void
   clickIntensity: number
-  onBlockHit: (position: [number, number, number]) => void
+  onBlockHit: (position: [number, number, number], blockType: BlockType) => void
+  onPowerUpCollect: (type: PowerUpType) => void
   isLowPerformance: boolean
 }) {
   const { camera } = useThree()
-  const [hitEffects, setHitEffects] = useState<{ id: number; position: [number, number, number] }[]>([])
+  const [hitEffects, setHitEffects] = useState<
+    { id: number; position: [number, number, number]; blockType: BlockType }[]
+  >([])
+  const [explosions, setExplosions] = useState<{ id: number; position: [number, number, number]; intensity: number }[]>(
+    [],
+  )
   const effectIdCounter = useRef(0)
+  const explosionIdCounter = useRef(0)
   const cameraShakeRef = useRef({ x: 0, y: 0, intensity: 0 })
   const [woodChips, setWoodChips] = useState<{ id: number; position: [number, number, number]; scale: number }[]>([])
   const woodChipCounter = useRef(0)
@@ -477,25 +855,25 @@ function GameScene({
   // Handle camera shake and movement
   useFrame(({ clock }) => {
     if (cameraShakeRef.current.intensity > 0) {
-      // Apply camera shake - ปรับปรุงให้สั่นมากขึ้น
-      const time = clock.getElapsedTime() * 20 // ลดลงจาก 30
-      const shakeX = Math.sin(time) * cameraShakeRef.current.intensity * 0.2 // ลดลงจาก 0.3
-      const shakeY = Math.cos(time) * cameraShakeRef.current.intensity * 0.1 // ลดลงจาก 0.2
+      // Apply camera shake
+      const time = clock.getElapsedTime() * 20
+      const shakeX = Math.sin(time) * cameraShakeRef.current.intensity * 0.2
+      const shakeY = Math.cos(time) * cameraShakeRef.current.intensity * 0.1
 
-      camera.position.x += (cameraShakeRef.current.x + shakeX - camera.position.x) * 0.1 // ลดลงจาก 0.2
-      camera.position.y += (10 + shakeY - camera.position.y) * 0.1 // ลดลงจาก 0.2
-      camera.position.z += (10 - camera.position.z) * 0.1 // ลดลงจาก 0.2, ตัด shakeZ ออก
+      camera.position.x += (cameraShakeRef.current.x + shakeX - camera.position.x) * 0.1
+      camera.position.y += (10 + shakeY - camera.position.y) * 0.1
+      camera.position.z += (10 - camera.position.z) * 0.1
 
       // ลดความเข้มของการสั่นเร็วขึ้น
-      cameraShakeRef.current.intensity *= 0.85 // เพิ่มจาก 0.92
+      cameraShakeRef.current.intensity *= 0.85
       if (cameraShakeRef.current.intensity < 0.01) {
         cameraShakeRef.current.intensity = 0
       }
     } else {
-      // Smooth return to original position - ลดความซับซ้อน
-      camera.position.x += (0 - camera.position.x) * 0.03 // ลดลงจาก 0.05
-      camera.position.y += (10 - camera.position.y) * 0.03 // ลดลงจาก 0.05
-      camera.position.z += (10 - camera.position.z) * 0.03 // ลดลงจาก 0.05
+      // Smooth return to original position
+      camera.position.x += (0 - camera.position.x) * 0.03
+      camera.position.y += (10 - camera.position.y) * 0.03
+      camera.position.z += (10 - camera.position.z) * 0.03
     }
 
     // Always look at center
@@ -504,22 +882,38 @@ function GameScene({
 
   // Handle block hit
   const handleBlockHit = useCallback(
-    (position: [number, number, number]) => {
-      // ลดจำนวน hit effects ลงอย่างมาก
+    (position: [number, number, number], blockType: BlockType) => {
+      // Add hit effect
       if (Math.random() > 0.5) {
-        // เพิ่มเงื่อนไขให้แสดงเอฟเฟกต์แค่ 50% ของการตี
         const newEffectId = effectIdCounter.current++
-        setHitEffects((prev) => [...prev, { id: newEffectId, position }])
+        setHitEffects((prev) => [...prev, { id: newEffectId, position, blockType }])
 
-        // Remove effect after animation - ลดเวลาลง
+        // Remove effect after animation
         setTimeout(() => {
           setHitEffects((prev) => prev.filter((effect) => effect.id !== newEffectId))
-        }, 200) // ลดลงจาก 300ms
+        }, 200)
       }
 
-      // ลดการสร้าง wood chips
+      // Add explosion effect for explosive blocks
+      if (blockType === "explosive") {
+        const newExplosionId = explosionIdCounter.current++
+        setExplosions((prev) => [...prev, { id: newExplosionId, position, intensity: 1.5 }])
+
+        // Apply stronger camera shake for explosions
+        cameraShakeRef.current = {
+          x: position[0] * 0.1,
+          y: position[1] * 0.05,
+          intensity: 0.5,
+        }
+
+        // Remove explosion after animation
+        setTimeout(() => {
+          setExplosions((prev) => prev.filter((explosion) => explosion.id !== newExplosionId))
+        }, 1000)
+      }
+
+      // Add wood chips
       if (!isLowPerformance && Math.random() > 0.7) {
-        // แสดงเศษไม้แค่ 30% ของการตี
         const newChips = []
         newChips.push({
           id: woodChipCounter.current++,
@@ -529,23 +923,22 @@ function GameScene({
         setWoodChips((prev) => [...prev, ...newChips])
       }
 
-      // ลบ wood chips เก่าทิ้งเร็วขึ้น
+      // ลบ wood chips เก่าทิ้ง
       if (woodChips.length > 3) {
-        // ลดลงจาก 5
         setWoodChips((prev) => prev.slice(prev.length - 3))
       }
 
-      // Apply camera shake - ลดความเข้มลง
+      // Apply camera shake
       cameraShakeRef.current = {
-        x: position[0] * 0.05, // ลดลงจาก 0.1
-        y: position[1] * 0.02, // ลดลงจาก 0.05
-        intensity: 0.2 * clickIntensity, // ลดลงจาก 0.3
+        x: position[0] * 0.05,
+        y: position[1] * 0.02,
+        intensity: 0.2 * clickIntensity,
       }
 
       // Pass to parent component
-      onBlockHit(position)
+      onBlockHit(position, blockType)
     },
-    [clickIntensity, isLowPerformance],
+    [clickIntensity, isLowPerformance, onBlockHit, woodChips.length],
   )
 
   return (
@@ -559,14 +952,14 @@ function GameScene({
         shadow-mapSize-height={isLowPerformance ? 1024 : 2048}
       />
 
-      {/* สภาพแวดล้อมตามระดับ - ลดความซับซ้อนบนอุปกรณ์ประสิทธิภาพต่ำ */}
+      {/* สภาพแวดล้อมตามระดับ */}
       {environment === "day" && <Sky sunPosition={[0, 1, 0]} />}
       {environment === "sunset" && <Sky sunPosition={[0, 0.2, -1]} />}
       {environment === "night" && (
         <Stars
           radius={100}
           depth={50}
-          count={isLowPerformance ? 1000 : 2000} // ลดลงจาก 2000 และ 5000
+          count={isLowPerformance ? 1000 : 2000}
           factor={4}
           saturation={0}
           fade
@@ -596,28 +989,38 @@ function GameScene({
 
       {/* Hit effects */}
       {hitEffects.map((effect) => (
-        <ParticleEffect
+        <HitEffect
           key={effect.id}
           position={effect.position}
           intensity={clickIntensity}
           isLowPerformance={isLowPerformance}
+          blockType={effect.blockType}
         />
       ))}
 
-      {/* Wood chips - ลดจำนวนบนอุปกรณ์ประสิทธิภาพต่ำ */}
+      {/* Explosion effects */}
+      {explosions.map((explosion) => (
+        <ExplosionEffect
+          key={explosion.id}
+          position={explosion.position}
+          intensity={explosion.intensity}
+          isLowPerformance={isLowPerformance}
+        />
+      ))}
+
+      {/* Wood chips */}
       {woodChips.map((chip) => (
         <FloatingWoodChip key={chip.id} position={chip.position} scale={chip.scale} />
       ))}
 
       <Physics
-        // ปรับแต่งการตั้งค่าฟิสิกส์ให้เบาลง
-        iterations={isLowPerformance ? 1 : 3} // ลดลงจาก 3 และ 5
-        tolerance={0.005} // เพิ่มค่า tolerance จาก 0.002
+        iterations={isLowPerformance ? 1 : 3}
+        tolerance={0.005}
         defaultContactMaterial={{
-          friction: 0.1, // ลดความเสียดทาน
-          restitution: 0.2, // ลดการกระเด้ง
+          friction: 0.1,
+          restitution: 0.2,
         }}
-        gravity={[0, -2, 0]} // ลดแรงโน้มถ่วงลง
+        gravity={[0, -2, 0]}
       >
         <Floor position={[0, -0.5, 0]} />
 
@@ -631,6 +1034,7 @@ function GameScene({
             color={block.color}
             health={block.health}
             maxHealth={block.maxHealth}
+            blockType={block.blockType}
             onDestroy={onBlockDestroy}
             onDamage={onBlockDamage}
             onHit={handleBlockHit}
@@ -638,12 +1042,19 @@ function GameScene({
         ))}
       </Physics>
 
+      {/* Power-ups */}
+      {powerUps.map((powerUp, index) => (
+        <PowerUp key={index} type={powerUp.type} position={powerUp.position} onCollect={onPowerUpCollect} />
+      ))}
+
       {/* Game UI elements */}
       <LevelIndicator level={level} />
       <ScoreIndicator score={score} />
       <TimerIndicator time={timeLeft} />
+      <ComboIndicator combo={combo} />
+      <PowerUpIndicator activePowerUp={activePowerUp} timeLeft={powerUpTimeLeft} />
 
-      {/* องค์ประกอบตกแต่งเพิ่มเติม - ลดจำนวนบนอุปกรณ์ประสิทธิภาพต่ำ */}
+      {/* องค์ประกอบตกแต่งเพิ่มเติม */}
       {!isLowPerformance && (
         <>
           <Axe position={[5, 0, 5]} rotation={[0, Math.PI / 4, 0]} />
@@ -658,8 +1069,8 @@ function GameScene({
         enablePan={false}
         maxPolarAngle={Math.PI / 2.5}
         minPolarAngle={Math.PI / 6}
-        enableDamping={false} // ปิดการใช้งาน damping
-        enableRotate={!isMobile} // ปิดการหมุนบนมือถือ
+        enableDamping={false}
+        enableRotate={!isMobile}
       />
     </>
   )
@@ -681,7 +1092,7 @@ function StartScene({ onStartGame }: { onStartGame: () => void }) {
   useFrame(({ clock }) => {
     const time = clock.getElapsedTime()
 
-    // Gentle camera movement - ลดความซับซ้อนบนมือถือ
+    // Gentle camera movement
     if (!isMobile) {
       camera.position.x = Math.sin(time * 0.2) * 2
       camera.position.y = 5 + Math.sin(time * 0.1) * 0.5
@@ -727,10 +1138,32 @@ function StartScene({ onStartGame }: { onStartGame: () => void }) {
         </Center>
       </group>
 
+      {/* Subtitle */}
+      <group position={[0, 3, 0]}>
+        <Center>
+          <Float speed={1.2} rotationIntensity={0.1} floatIntensity={0.3}>
+            <Text
+              position={[0, 0, 0]}
+              rotation={[0, 0, 0]}
+              fontSize={0.4}
+              color="#FF9800"
+              anchorX="center"
+              anchorY="middle"
+            >
+              SPECIAL EDITION
+            </Text>
+          </Float>
+        </Center>
+      </group>
+
       {/* Start button */}
       <group position={[0, 2, 0]} onClick={handleClick}>
         <Center>
           <Float speed={2} rotationIntensity={0.3} floatIntensity={0.7}>
+            <mesh position={[0, 0, -0.05]} receiveShadow>
+              <boxGeometry args={[3.5, 0.8, 0.1]} />
+              <meshStandardMaterial color="#000000" opacity={0.8} transparent={true} />
+            </mesh>
             <Text
               position={[0, 0, 0]}
               rotation={[0, 0, 0]}
@@ -738,6 +1171,8 @@ function StartScene({ onStartGame }: { onStartGame: () => void }) {
               color="#FFFFFF"
               anchorX="center"
               anchorY="middle"
+              outlineColor="#000000"
+              outlineWidth={0.02}
             >
               TAP TO START
             </Text>
@@ -745,7 +1180,25 @@ function StartScene({ onStartGame }: { onStartGame: () => void }) {
         </Center>
       </group>
 
-      {/* Decorative trees - ลดจำนวนบนมือถือ */}
+      {/* Features text */}
+      <group position={[0, 0.5, 0]}>
+        <Center>
+          <Float speed={1} rotationIntensity={0.1} floatIntensity={0.2}>
+            <Text
+              position={[0, 0, 0]}
+              rotation={[0, 0, 0]}
+              fontSize={0.25}
+              color="#BBBBBB"
+              anchorX="center"
+              anchorY="middle"
+            >
+              SPECIAL BLOCKS • POWER-UPS • COMBOS
+            </Text>
+          </Float>
+        </Center>
+      </group>
+
+      {/* Decorative trees */}
       {!isMobile ? (
         <>
           <Tree3D position={[-5, -0.5, -2]} scale={1.2} />
@@ -855,8 +1308,8 @@ function LevelCompleteScene({
         <Center>
           <Float speed={2} rotationIntensity={0.3} floatIntensity={0.7}>
             <mesh position={[0, 0, -0.05]} receiveShadow>
-              <boxGeometry args={[4, 0.8, 0.1]} />
-              <meshStandardMaterial color="#000000" opacity={0.7} transparent={true} />
+              <boxGeometry args={[5, 1, 0.1]} />
+              <meshStandardMaterial color="#000000" opacity={0.8} transparent={true} />
             </mesh>
             <Text
               position={[0, 0, 0]}
@@ -865,7 +1318,9 @@ function LevelCompleteScene({
               color="#FFFFFF"
               anchorX="center"
               anchorY="middle"
-              backgroundColor="#00000000"
+              outlineColor="#000000"
+              outlineWidth={0.02}
+              font="/fonts/Inter-Bold.woff"
             >
               TAP FOR NEXT LEVEL
             </Text>
@@ -975,6 +1430,10 @@ function GameOverScene({
       <group position={[0, 1, 0]} onClick={handleClick}>
         <Center>
           <Float speed={2} rotationIntensity={0.3} floatIntensity={0.7}>
+            <mesh position={[0, 0, -0.05]} receiveShadow>
+              <boxGeometry args={[4, 0.8, 0.1]} />
+              <meshStandardMaterial color="#000000" opacity={0.8} transparent={true} />
+            </mesh>
             <Text
               position={[0, 0, 0]}
               rotation={[0, 0, 0]}
@@ -982,6 +1441,8 @@ function GameOverScene({
               color="#FFFFFF"
               anchorX="center"
               anchorY="middle"
+              outlineColor="#000000"
+              outlineWidth={0.02}
             >
               TAP TO RESTART
             </Text>
@@ -993,6 +1454,10 @@ function GameOverScene({
       <group position={[0, 0, 0]} onClick={handleBackToMenu}>
         <Center>
           <Float speed={1.5} rotationIntensity={0.2} floatIntensity={0.5}>
+            <mesh position={[0, 0, -0.05]} receiveShadow>
+              <boxGeometry args={[3.5, 0.7, 0.1]} />
+              <meshStandardMaterial color="#000000" opacity={0.7} transparent={true} />
+            </mesh>
             <Text
               position={[0, 0, 0]}
               rotation={[0, 0, 0]}
@@ -1000,6 +1465,8 @@ function GameOverScene({
               color="#FFD700"
               anchorX="center"
               anchorY="middle"
+              outlineColor="#000000"
+              outlineWidth={0.02}
             >
               BACK TO MENU
             </Text>
@@ -1097,6 +1564,10 @@ function GameCompleteScene({
       <group position={[0, 1, 0]} onClick={handleClick}>
         <Center>
           <Float speed={2} rotationIntensity={0.3} floatIntensity={0.7}>
+            <mesh position={[0, 0, -0.05]} receiveShadow>
+              <boxGeometry args={[4.5, 0.8, 0.1]} />
+              <meshStandardMaterial color="#000000" opacity={0.8} transparent={true} />
+            </mesh>
             <Text
               position={[0, 0, 0]}
               rotation={[0, 0, 0]}
@@ -1104,6 +1575,8 @@ function GameCompleteScene({
               color="#FFFFFF"
               anchorX="center"
               anchorY="middle"
+              outlineColor="#000000"
+              outlineWidth={0.02}
             >
               TAP TO PLAY AGAIN
             </Text>
@@ -1115,6 +1588,10 @@ function GameCompleteScene({
       <group position={[0, 0, 0]} onClick={handleBackToMenu}>
         <Center>
           <Float speed={1.5} rotationIntensity={0.2} floatIntensity={0.5}>
+            <mesh position={[0, 0, -0.05]} receiveShadow>
+              <boxGeometry args={[3.5, 0.7, 0.1]} />
+              <meshStandardMaterial color="#000000" opacity={0.7} transparent={true} />
+            </mesh>
             <Text
               position={[0, 0, 0]}
               rotation={[0, 0, 0]}
@@ -1122,6 +1599,8 @@ function GameCompleteScene({
               color="#FFD700"
               anchorX="center"
               anchorY="middle"
+              outlineColor="#000000"
+              outlineWidth={0.02}
             >
               BACK TO MENU
             </Text>
@@ -1235,9 +1714,14 @@ export default function BlockBreaker3D() {
   const [score, setScore] = useState(0)
   const [timeLeft, setTimeLeft] = useState(10)
   const [blocks, setBlocks] = useState<any[]>([])
+  const [powerUps, setPowerUps] = useState<{ type: PowerUpType; position: [number, number, number] }[]>([])
   const [blocksDestroyed, setBlocksDestroyed] = useState(0)
   const [totalBlocksDestroyed, setTotalBlocksDestroyed] = useState(0)
   const [clickIntensity, setClickIntensity] = useState(1)
+  const [combo, setCombo] = useState(0)
+  const [lastBlockDestroyTime, setLastBlockDestroyTime] = useState(0)
+  const [activePowerUp, setActivePowerUp] = useState<PowerUpType | null>(null)
+  const [powerUpTimeLeft, setPowerUpTimeLeft] = useState(0)
   const lastClickTimeRef = useRef(0)
   const [hitPositions, setHitPositions] = useState<[number, number, number][]>([])
   const [isLowPerformance, setIsLowPerformance] = useState(false)
@@ -1258,8 +1742,8 @@ export default function BlockBreaker3D() {
         lowMemory = (navigator as any).deviceMemory < 4
       }
 
-      // ตัดสินใจจากข้อมูลทั้งหมด - เพิ่มความเข้มงวดในการตรวจสอบ
-      const isLowPerf = lowMemory || cpuCores <= 4 || isMobile || true // เพิ่ม true เพื่อบังคับให้ใช้โหมดประสิทธิภาพต่ำเสมอ
+      // ตัดสินใจจากข้อมูลทั้งหมด
+      const isLowPerf = lowMemory || cpuCores <= 4 || isMobile
       setIsLowPerformance(isLowPerf)
     }
 
@@ -1292,18 +1776,27 @@ export default function BlockBreaker3D() {
 
       // ลดความซับซ้อนบนอุปกรณ์ประสิทธิภาพต่ำ
       if (isLowPerformance) {
-        rows = Math.max(2, Math.floor(rows * 0.5)) // ลดลงจาก 0.7
-        columns = Math.max(2, Math.floor(columns * 0.5)) // ลดลงจาก 0.7
-        layers = 1 // จำกัดให้มีแค่ 1 layer เสมอ
+        rows = Math.max(2, Math.floor(rows * 0.5))
+        columns = Math.max(2, Math.floor(columns * 0.5))
+        layers = 1
+      }
+
+      // Calculate special blocks based on level
+      const specialBlocks = {
+        explosive: Math.min(Math.floor(level / 2), 5), // เพิ่มบล็อคระเบิดตามระดับ
+        heavy: Math.min(Math.floor(level / 3), 3), // เพิ่มบล็อคหนักตามระดับ
+        bonus: Math.min(Math.floor(level / 2), 4), // เพิ่มบล็อคโบนัสตามระดับ
+        shield: Math.min(Math.floor(level / 4), 2), // เพิ่มบล็อคโล่ตามระดับ
       }
 
       return {
-        blockCount: isLowPerformance ? Math.floor(totalBlocks * 0.5) : totalBlocks, // ลดลงจาก 0.7
-        blockHealth: Math.ceil(level * 1.0), // ลดลงจาก 1.2
+        blockCount: isLowPerformance ? Math.floor(totalBlocks * 0.5) : totalBlocks,
+        blockHealth: Math.ceil(level * 1.0),
         timeLimit: 10, // 10 seconds per level
         rows,
         columns,
         layers,
+        specialBlocks,
       }
     },
     [isLowPerformance],
@@ -1319,9 +1812,17 @@ export default function BlockBreaker3D() {
 
     const config = getLevelConfig(level)
     const newBlocks: any[] = []
+    const newPowerUps: { type: PowerUpType; position: [number, number, number] }[] = []
 
     // Create blocks in a 3D grid pattern
     let blockId = 0
+    const specialBlocksCount = {
+      explosive: 0,
+      heavy: 0,
+      bonus: 0,
+      shield: 0,
+    }
+
     for (let layer = 0; layer < config.layers; layer++) {
       for (let row = 0; row < config.rows; row++) {
         for (let col = 0; col < config.columns; col++) {
@@ -1338,13 +1839,36 @@ export default function BlockBreaker3D() {
             const sizeY = 0.8 + Math.random() * 0.2
             const sizeZ = 0.8 + Math.random() * 0.2
 
+            // Determine block type
+            let blockType: BlockType = "normal"
+            let blockHealth = config.blockHealth
+
+            // Assign special block types
+            if (specialBlocksCount.explosive < config.specialBlocks.explosive && Math.random() < 0.2) {
+              blockType = "explosive"
+              specialBlocksCount.explosive++
+            } else if (specialBlocksCount.heavy < config.specialBlocks.heavy && Math.random() < 0.15) {
+              blockType = "heavy"
+              blockHealth = Math.ceil(blockHealth * 1.5) // Heavy blocks have more health
+              specialBlocksCount.heavy++
+            } else if (specialBlocksCount.bonus < config.specialBlocks.bonus && Math.random() < 0.2) {
+              blockType = "bonus"
+              blockHealth = Math.ceil(blockHealth * 0.7) // Bonus blocks have less health
+              specialBlocksCount.bonus++
+            } else if (specialBlocksCount.shield < config.specialBlocks.shield && Math.random() < 0.1) {
+              blockType = "shield"
+              blockHealth = Math.ceil(blockHealth * 1.2) // Shield blocks have more health
+              specialBlocksCount.shield++
+            }
+
             newBlocks.push({
               id: blockId++,
               position: [x, y, z] as [number, number, number],
               size: [sizeX, sizeY, sizeZ] as [number, number, number],
               color: woodColors[Math.floor(Math.random() * woodColors.length)],
-              health: config.blockHealth,
-              maxHealth: config.blockHealth,
+              health: blockHealth,
+              maxHealth: blockHealth,
+              blockType,
             })
           }
         }
@@ -1368,12 +1892,33 @@ export default function BlockBreaker3D() {
         color: woodColors[Math.floor(Math.random() * woodColors.length)],
         health: config.blockHealth,
         maxHealth: config.blockHealth,
+        blockType: "normal",
+      })
+    }
+
+    // Add power-ups
+    const powerUpCount = Math.min(Math.floor(level / 2) + 1, 3)
+    const powerUpTypes: PowerUpType[] = ["hammer", "bomb", "freeze", "multiplier"]
+
+    for (let i = 0; i < powerUpCount; i++) {
+      const x = Math.random() * 8 - 4
+      const y = Math.random() * 3 + 2
+      const z = Math.random() * 8 - 4
+
+      newPowerUps.push({
+        type: powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)],
+        position: [x, y, z] as [number, number, number],
       })
     }
 
     setBlocks(newBlocks)
+    setPowerUps(newPowerUps)
     setBlocksDestroyed(0)
     setTimeLeft(config.timeLimit)
+    setCombo(0)
+    setLastBlockDestroyTime(0)
+    setActivePowerUp(null)
+    setPowerUpTimeLeft(0)
     setGameState("playing")
   }, [level, getLevelConfig])
 
@@ -1403,6 +1948,35 @@ export default function BlockBreaker3D() {
         const destroyedBlock = currentBlocks.find((block) => block.id === id)
         if (!destroyedBlock) return currentBlocks
 
+        // Update combo
+        const now = Date.now()
+        const timeSinceLastDestroy = now - lastBlockDestroyTime
+
+        if (timeSinceLastDestroy < 1000) {
+          setCombo((prev) => prev + 1)
+        } else {
+          setCombo(1)
+        }
+
+        setLastBlockDestroyTime(now)
+
+        // Calculate score based on block type and combo
+        let blockScore = level * 10
+
+        if (destroyedBlock.blockType === "bonus") {
+          blockScore *= 2 // Bonus blocks give double points
+        }
+
+        // Apply combo multiplier
+        blockScore *= Math.min(combo + 1, 5) // Cap combo multiplier at 5x
+
+        // Apply power-up multiplier
+        if (activePowerUp === "multiplier") {
+          blockScore *= 2
+        }
+
+        setScore((prev) => prev + blockScore)
+
         // Find all blocks that should be affected (including the destroyed one)
         const [x, y, z] = destroyedBlock.position
 
@@ -1412,23 +1986,43 @@ export default function BlockBreaker3D() {
         // Add the destroyed block
         blocksToProcess.set(id, destroyedBlock.health)
 
-        // ลดรัศมีผลกระทบลงเพื่อลดจำนวนบล็อกที่ได้รับผลกระทบ
-        const effectRadius = isLowPerformance ? 1.2 : 1.5 // ลดลงจาก 2
+        // Special effects based on block type
+        if (destroyedBlock.blockType === "explosive") {
+          // Explosive blocks damage all nearby blocks
+          const explosionRadius = 3
 
-        // Find nearby blocks for area effect
-        currentBlocks.forEach((block) => {
-          if (block.id !== id) {
-            const [bx, by, bz] = block.position
-            const distance = Math.sqrt(Math.pow(x - bx, 2) + Math.pow(y - by, 2) + Math.pow(z - bz, 2))
+          currentBlocks.forEach((block) => {
+            if (block.id !== id) {
+              const [bx, by, bz] = block.position
+              const distance = Math.sqrt(Math.pow(x - bx, 2) + Math.pow(y - by, 2) + Math.pow(z - bz, 2))
 
-            // If block is close enough, add it to the processing list
-            if (distance < effectRadius) {
-              // Closer blocks take more damage
-              const damage = distance < 0.8 ? 2 : 1 // ลดลงจาก 1
-              blocksToProcess.set(block.id, damage)
+              // If block is close enough, add it to the processing list
+              if (distance < explosionRadius) {
+                // Closer blocks take more damage
+                const damage = Math.ceil((explosionRadius - distance) * 2)
+                blocksToProcess.set(block.id, damage)
+              }
             }
-          }
-        })
+          })
+        } else {
+          // Normal area effect for other blocks
+          const effectRadius = isLowPerformance ? 1.2 : 1.5
+
+          // Find nearby blocks for area effect
+          currentBlocks.forEach((block) => {
+            if (block.id !== id) {
+              const [bx, by, bz] = block.position
+              const distance = Math.sqrt(Math.pow(x - bx, 2) + Math.pow(y - by, 2) + Math.pow(z - bz, 2))
+
+              // If block is close enough, add it to the processing list
+              if (distance < effectRadius) {
+                // Closer blocks take more damage
+                const damage = distance < 0.8 ? 2 : 1
+                blocksToProcess.set(block.id, damage)
+              }
+            }
+          })
+        }
 
         // Process all blocks at once to avoid recursion
         let destroyedCount = 0
@@ -1438,7 +2032,9 @@ export default function BlockBreaker3D() {
         blocksToProcess.forEach((damage, blockId) => {
           updatedBlocks = updatedBlocks.map((block) => {
             if (block.id === blockId) {
-              const newHealth = Math.max(0, block.health - damage)
+              // Shield blocks take less damage
+              const actualDamage = block.blockType === "shield" ? Math.ceil(damage / 2) : damage
+              const newHealth = Math.max(0, block.health - actualDamage)
               return { ...block, health: newHealth }
             }
             return block
@@ -1457,7 +2053,6 @@ export default function BlockBreaker3D() {
         // Update state
         setBlocksDestroyed((prev) => prev + destroyedCount)
         setTotalBlocksDestroyed((prev) => prev + destroyedCount)
-        setScore((prev) => prev + level * 10 * destroyedCount)
 
         // Check if level is complete
         if (updatedBlocks.length === 0) {
@@ -1468,7 +2063,7 @@ export default function BlockBreaker3D() {
         return updatedBlocks
       })
     },
-    [level, isLowPerformance],
+    [level, isLowPerformance, lastBlockDestroyTime, combo, activePowerUp],
   )
 
   // Handle block damage
@@ -1486,17 +2081,84 @@ export default function BlockBreaker3D() {
     )
   }, [])
 
+  // Handle power-up collection
+  const handlePowerUpCollect = useCallback(
+    (type: PowerUpType) => {
+      setActivePowerUp(type)
+
+      // Set power-up duration based on type
+      switch (type) {
+        case "hammer":
+          setPowerUpTimeLeft(10) // Super hammer lasts 10 seconds
+          break
+        case "bomb":
+          // Bomb is instant - destroy all blocks with health <= 2
+          setBlocks((prev) =>
+            prev.filter((block) => {
+              if (block.health <= 2 && block.blockType !== "shield") {
+                setBlocksDestroyed((prevCount) => prevCount + 1)
+                setTotalBlocksDestroyed((prevCount) => prevCount + 1)
+                setScore((prevScore) => prevScore + level * 10)
+                return false
+              }
+              return true
+            }),
+          )
+          setPowerUpTimeLeft(0)
+          setActivePowerUp(null)
+          break
+        case "freeze":
+          setPowerUpTimeLeft(5) // Time freeze lasts 5 seconds
+          break
+        case "multiplier":
+          setPowerUpTimeLeft(10) // Score multiplier lasts 10 seconds
+          break
+        default:
+          setPowerUpTimeLeft(0)
+          break
+      }
+
+      // Remove the collected power-up
+      setPowerUps((prev) => prev.filter((powerUp) => powerUp.type !== type))
+    },
+    [level],
+  )
+
   // Timer effect
   useEffect(() => {
     let timer: NodeJS.Timeout
 
     if (gameState === "playing" && timeLeft > 0) {
       timer = setTimeout(() => {
-        setTimeLeft((prev) => {
+        // Don't decrease time if freeze power-up is active
+        if (activePowerUp !== "freeze") {
+          setTimeLeft((prev) => {
+            const newTime = prev - 1
+            if (newTime === 0) {
+              // Time's up
+              setGameState("gameOver")
+            }
+            return newTime
+          })
+        }
+      }, 1000)
+    }
+
+    return () => {
+      if (timer) clearTimeout(timer)
+    }
+  }, [gameState, timeLeft, activePowerUp])
+
+  // Power-up timer effect
+  useEffect(() => {
+    let timer: NodeJS.Timeout
+
+    if (activePowerUp && powerUpTimeLeft > 0) {
+      timer = setTimeout(() => {
+        setPowerUpTimeLeft((prev) => {
           const newTime = prev - 1
           if (newTime === 0) {
-            // Time's up
-            setGameState("gameOver")
+            setActivePowerUp(null)
           }
           return newTime
         })
@@ -1506,11 +2168,11 @@ export default function BlockBreaker3D() {
     return () => {
       if (timer) clearTimeout(timer)
     }
-  }, [gameState, timeLeft])
+  }, [activePowerUp, powerUpTimeLeft])
 
   // Handle block hit for effects
   const handleBlockHit = useCallback(
-    (position: [number, number, number]) => {
+    (position: [number, number, number], blockType: BlockType) => {
       // Calculate click speed based on time between clicks
       const now = Date.now()
       const timeDiff = now - lastClickTimeRef.current
@@ -1548,10 +2210,15 @@ export default function BlockBreaker3D() {
             score={score}
             timeLeft={timeLeft}
             blocks={blocks}
+            powerUps={powerUps}
+            combo={combo}
+            activePowerUp={activePowerUp}
+            powerUpTimeLeft={powerUpTimeLeft}
             onBlockDestroy={handleBlockDestroy}
             onBlockDamage={handleBlockDamage}
             clickIntensity={clickIntensity}
             onBlockHit={handleBlockHit}
+            onPowerUpCollect={handlePowerUpCollect}
             isLowPerformance={isLowPerformance}
           />
         )}
@@ -1583,7 +2250,7 @@ export default function BlockBreaker3D() {
           />
         )}
 
-        <EffectComposer enabled={false}>
+        <EffectComposer enabled={!isLowPerformance && !isMobile}>
           <Bloom luminanceThreshold={0.3} luminanceSmoothing={0.9} height={100} intensity={0.8} />
         </EffectComposer>
       </Canvas>
