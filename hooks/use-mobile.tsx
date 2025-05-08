@@ -8,16 +8,18 @@ export function useMobile(): boolean {
   useEffect(() => {
     // ตรวจสอบว่าเป็นมือถือหรือไม่
     const checkMobile = () => {
+      // ตรวจสอบจาก User Agent
       const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera
       const mobileRegex = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i
-
-      // ตรวจสอบจาก User Agent
       const isMobileDevice = mobileRegex.test(userAgent.toLowerCase())
 
       // ตรวจสอบจากขนาดหน้าจอ
       const isMobileScreen = window.innerWidth < 768
 
-      setIsMobile(isMobileDevice || isMobileScreen)
+      // ตรวจสอบจาก touch capability
+      const hasTouchScreen = "ontouchstart" in window || navigator.maxTouchPoints > 0
+
+      setIsMobile(isMobileDevice || isMobileScreen || hasTouchScreen)
     }
 
     // ตรวจสอบตอนโหลดหน้า

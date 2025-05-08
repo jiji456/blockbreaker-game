@@ -62,6 +62,8 @@ function Block3D({
     mass: 1,
     position,
     args: size,
+    linearDamping: 0.9, // เพิ่มการหน่วงเพื่อลดการเคลื่อนไหว
+    angularDamping: 0.9, // เพิ่มการหน่วงการหมุน
   }))
 
   const [localHealth, setLocalHealth] = useState(health)
@@ -91,8 +93,8 @@ function Block3D({
     e.stopPropagation()
     setIsHit(true)
 
-    // Apply force to make it look like it was hit
-    api.applyImpulse([0, 5, 0], [0, 0, 0])
+    // Apply force to make it look like it was hit - ลดแรงลง
+    api.applyImpulse([0, 3, 0], [0, 0, 0]) // ลดลงจาก 5
 
     // Trigger hit effect at this position
     onHit(position)
@@ -110,7 +112,7 @@ function Block3D({
     }
 
     // Reset hit animation
-    setTimeout(() => setIsHit(false), 300)
+    setTimeout(() => setIsHit(false), 200) // ลดลงจาก 300
   }
 
   return (
@@ -121,7 +123,7 @@ function Block3D({
       onClick={handleClick}
       onPointerOver={() => !isMobile && setIsHovered(true)}
       onPointerOut={() => !isMobile && setIsHovered(false)}
-      scale={isHit ? 0.9 : isHovered ? 1.05 : 1}
+      scale={isHit ? 0.95 : isHovered ? 1.03 : 1} // ลดการเปลี่ยนขนาด
     >
       <boxGeometry args={size} />
       <meshStandardMaterial
@@ -129,7 +131,7 @@ function Block3D({
         roughness={0.7}
         metalness={0.1}
         emissive={isHit ? "#ff9500" : isHovered ? "#ffcc00" : "#000000"}
-        emissiveIntensity={isHit ? 0.5 : isHovered ? 0.2 : 0}
+        emissiveIntensity={isHit ? 0.3 : isHovered ? 0.1 : 0} // ลดความเข้มลง
       />
 
       {/* Health indicator as 3D text */}
@@ -144,6 +146,117 @@ function Block3D({
         {localHealth.toString()}
       </Text>
     </mesh>
+  )
+}
+
+// กล่องไม้สำหรับตกแต่ง
+function WoodenBox({
+  position = [0, 0, 0],
+  rotation = [0, 0, 0],
+  size = [1, 1, 1],
+}: {
+  position?: [number, number, number]
+  rotation?: [number, number, number]
+  size?: [number, number, number]
+}) {
+  const boxRef = useRef<THREE.Group>(null)
+
+  // เพิ่มการเคลื่อนไหวเล็กน้อย
+  useFrame(({ clock }) => {
+    if (boxRef.current) {
+      // เคลื่อนไหวเล็กน้อยตามเวลา
+      boxRef.current.position.y = position[1] + Math.sin(clock.getElapsedTime() * 0.5) * 0.05
+      boxRef.current.rotation.y = rotation[1] + Math.sin(clock.getElapsedTime() * 0.3) * 0.02
+    }
+  })
+
+  return (
+    <group ref={boxRef} position={position} rotation={rotation}>
+      {/* ตัวกล่อง */}
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={size} />
+        <meshStandardMaterial color="#8B4513" roughness={0.8} />
+      </mesh>
+
+      {/* ลายไม้บนกล่อง */}
+      {[0, 1, 2, 3, 4, 5].map((face) => {
+        // คำนวณตำแหน่งและการหมุนสำหรับแต่ละด้าน
+        let facePosition: [number, number, number] = [0, 0, 0]
+        let faceRotation: [number, number, number] = [0, 0, 0]
+
+        switch (face) {
+          case 0: // ด้านบน
+            facePosition = [0, size[1] / 2 + 0.001, 0]
+            faceRotation = [-Math.PI / 2, 0, 0]
+            break
+          case 1: // ด้านล่าง
+            facePosition = [0, -size[1] / 2 - 0.001, 0]
+            faceRotation = [Math.PI / 2, 0, 0]
+            break
+          case 2: // ด้านหน้า
+            facePosition = [0, 0, size[2] / 2 + 0.001]
+            faceRotation = [0, 0, 0]
+            break
+          case 3: // ด้านหลัง
+            facePosition = [0, 0, -size[2] / 2 - 0.001]
+            faceRotation = [0, Math.PI, 0]
+            break
+          case 4: // ด้านซ้าย
+            facePosition = [-size[0] / 2 - 0.001, 0, 0]
+            faceRotation = [0, -Math.PI / 2, 0]
+            break
+          case 5: // ด้านขวา
+            facePosition = [size[0] / 2 + 0.001, 0, 0]
+            faceRotation = [0, Math.PI / 2, 0]
+            break
+        }
+
+        return (
+          <mesh key={face} position={facePosition} rotation={faceRotation} receiveShadow>
+            <planeGeometry args={face < 2 ? [size[0], size[2]] : face < 4 ? [size[0], size[1]] : [size[2], size[1]]} />
+            <meshStandardMaterial
+              color={face % 2 === 0 ? "#A0522D" : "#8B4513"}
+              roughness={0.9}
+              metalness={0.1}
+              map={undefined} // ถ้ามีเทคซ์เจอร์ไม้ สามารถใส่ตรงนี้ได้
+            />
+          </mesh>
+        )
+      })}
+
+      {/* เส้นขอบกล่อง */}
+      {[0, 1, 2, 3].map((edge) => {
+        // เส้นขอบด้านบน
+        return (
+          <mesh
+            key={`top-${edge}`}
+            position={[
+              edge === 0 || edge === 3 ? -size[0] / 2 : size[0] / 2,
+              size[1] / 2,
+              edge === 0 || edge === 1 ? -size[2] / 2 : size[2] / 2,
+            ]}
+            castShadow
+          >
+            <boxGeometry args={[0.05, 0.05, edge === 0 || edge === 3 ? size[2] : 0.05]} />
+            <meshStandardMaterial color="#5D4037" roughness={0.7} />
+          </mesh>
+        )
+      })}
+
+      {/* ฝากล่อง (เปิดได้) */}
+      <group position={[0, size[1] / 2, -size[2] / 2]} rotation={[Math.PI / 6, 0, 0]}>
+        <mesh castShadow receiveShadow position={[0, 0, size[2] / 2]}>
+          <boxGeometry args={[size[0], 0.1, size[2]]} />
+          <meshStandardMaterial color="#A0522D" roughness={0.8} />
+        </mesh>
+
+        {/* บานพับ */}
+        <mesh castShadow position={[0, 0, 0]}>
+          <cylinderGeometry args={[0.05, 0.05, size[0] - 0.1, 8]} rotation={[0, 0, Math.PI / 2]} />
+          <meshStandardMaterial color="#5D4037" metalness={0.5} roughness={0.5} />
+        </mesh>
+      </group>
+    </group>
   )
 }
 
@@ -507,41 +620,44 @@ function GameScene({
     const newEffectId = effectIdCounter.current++
     setHitEffects((prev) => [...prev, { id: newEffectId, position }])
 
-    // ลดจำนวน wood chips บนอุปกรณ์ประสิทธิภาพต่ำ
-    const chipCount = isLowPerformance ? 2 : Math.floor(3 + Math.random() * 5)
-    const newChips = []
+    // ลดจำนวน wood chips ลงอย่างมาก
+    // ไม่สร้าง wood chips เลยถ้าเป็นอุปกรณ์ประสิทธิภาพต่ำ
+    if (!isLowPerformance) {
+      const chipCount = 1 // เหลือแค่ 1 ชิ้น
+      const newChips = []
 
-    for (let i = 0; i < chipCount; i++) {
-      const offset = [(Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5]
+      for (let i = 0; i < chipCount; i++) {
+        const offset = [(Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.5]
 
-      newChips.push({
-        id: woodChipCounter.current++,
-        position: [position[0] + offset[0], position[1] + offset[1], position[2] + offset[2]] as [
-          number,
-          number,
-          number,
-        ],
-        scale: 0.5 + Math.random() * 0.5,
-      })
+        newChips.push({
+          id: woodChipCounter.current++,
+          position: [position[0] + offset[0], position[1] + offset[1], position[2] + offset[2]] as [
+            number,
+            number,
+            number,
+          ],
+          scale: 0.5 + Math.random() * 0.5,
+        })
+      }
+
+      setWoodChips((prev) => [...prev, ...newChips])
+
+      // ลบ wood chips เก่าทิ้งเร็วขึ้น
+      if (woodChips.length > 5) {
+        setWoodChips((prev) => prev.slice(prev.length - 5))
+      }
     }
 
-    setWoodChips((prev) => [...prev, ...newChips])
-
-    // Remove old wood chips if there are too many
-    if (woodChips.length > (isLowPerformance ? 10 : 30)) {
-      setWoodChips((prev) => prev.slice(prev.length - (isLowPerformance ? 10 : 30)))
-    }
-
-    // Remove effect after animation
+    // Remove effect after animation - ลดเวลาลง
     setTimeout(() => {
       setHitEffects((prev) => prev.filter((effect) => effect.id !== newEffectId))
-    }, 800)
+    }, 300) // ลดลงจาก 800ms
 
-    // Apply camera shake
+    // Apply camera shake - ลดความเข้มลง
     cameraShakeRef.current = {
-      x: position[0] * 0.2,
-      y: position[1] * 0.1,
-      intensity: 0.5 * clickIntensity, // เพิ่มความเข้มของการสั่น
+      x: position[0] * 0.1, // ลดลงจาก 0.2
+      y: position[1] * 0.05, // ลดลงจาก 0.1
+      intensity: 0.3 * clickIntensity, // ลดลงจาก 0.5
     }
 
     // Pass to parent component
@@ -609,10 +725,18 @@ function GameScene({
         <FloatingWoodChip key={chip.id} position={chip.position} scale={chip.scale} />
       ))}
 
+      {/* กล่องไม้ตกแต่ง - แสดงเฉพาะเมื่อไม่ใช่อุปกรณ์ประสิทธิภาพต่ำ */}
+      {!isLowPerformance && <WoodenBox position={[-6, 0, 0]} rotation={[0, Math.PI / 6, 0]} size={[1.2, 0.8, 1]} />}
+
       <Physics
-        // ลดความซับซ้อนของฟิสิกส์บนอุปกรณ์ประสิทธิภาพต่ำ
-        iterations={isLowPerformance ? 5 : 10}
-        tolerance={isLowPerformance ? 0.002 : 0.0001}
+        // ปรับแต่งการตั้งค่าฟิสิกส์ให้เบาลง
+        iterations={isLowPerformance ? 3 : 5} // ลดลงจาก 10
+        tolerance={0.002} // เพิ่มค่า tolerance
+        defaultContactMaterial={{
+          friction: 0.2, // ลดความเสียดทาน
+          restitution: 0.3, // ลดการกระเด้ง
+        }}
+        gravity={[0, -3, 0]} // ลดแรงโน้มถ่วงลง
       >
         <Floor position={[0, -0.5, 0]} />
 
@@ -758,6 +882,9 @@ function StartScene({ onStartGame }: { onStartGame: () => void }) {
         </>
       )}
 
+      {/* กล่องไม้ตกแต่ง */}
+      <WoodenBox position={[3, 0, -2]} rotation={[0, -Math.PI / 4, 0]} size={[1.2, 0.8, 1]} />
+
       {/* Floor */}
       <mesh position={[0, -0.5, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[100, 100]} />
@@ -880,6 +1007,9 @@ function LevelCompleteScene({
         </mesh>
       </group>
 
+      {/* กล่องไม้ตกแต่ง */}
+      <WoodenBox position={[3, 0, 3]} rotation={[0, Math.PI / 3, 0]} size={[1, 0.7, 0.9]} />
+
       <OrbitControls
         enableZoom={false}
         enablePan={false}
@@ -1000,6 +1130,9 @@ function GameOverScene({
           </Float>
         </Center>
       </group>
+
+      {/* กล่องไม้ตกแต่ง */}
+      <WoodenBox position={[-3, 0, 3]} rotation={[0, -Math.PI / 5, 0]} size={[1.1, 0.8, 0.9]} />
 
       <OrbitControls
         enableZoom={false}
@@ -1134,6 +1267,9 @@ function GameCompleteScene({
         </mesh>
       </group>
 
+      {/* กล่องไม้ตกแต่ง */}
+      <WoodenBox position={[4, 0, 2]} rotation={[0, Math.PI / 4, 0]} size={[1.2, 0.9, 1]} />
+
       <OrbitControls
         enableZoom={false}
         enablePan={false}
@@ -1157,9 +1293,10 @@ function ParticleEffect({
   const groupRef = useRef<THREE.Group>(null)
 
   useEffect(() => {
-    // Create particles - ลดจำนวนบนอุปกรณ์ประสิทธิภาพต่ำ
+    // ลดจำนวน particles ลงอย่างมาก
     const newParticles = []
-    const particleCount = Math.floor((isLowPerformance ? 5 : 10) * intensity)
+    // ลดจำนวน particles ลงเหลือแค่ 2-3 อัน
+    const particleCount = Math.floor((isLowPerformance ? 2 : 3) * intensity)
 
     for (let i = 0; i < particleCount; i++) {
       const angle = Math.random() * Math.PI * 2
@@ -1193,7 +1330,7 @@ function ParticleEffect({
             particle.velocity[1] - 0.003, // gravity
             particle.velocity[2],
           ] as [number, number, number],
-          life: particle.life - 0.02,
+          life: particle.life - 0.04, // ทำให้หายเร็วขึ้น
         }))
         .filter((particle) => particle.life > 0),
     )
@@ -1204,12 +1341,10 @@ function ParticleEffect({
       {particles.map((particle, i) => (
         <mesh key={i} position={particle.position}>
           <sphereGeometry
-            args={[0.1 * intensity * particle.life, isLowPerformance ? 4 : 8, isLowPerformance ? 4 : 8]}
+            args={[0.1 * intensity * particle.life, 4, 4]} // ลดความละเอียดลงอีก
           />
-          <meshStandardMaterial
+          <meshBasicMaterial // ใช้ Basic Material แทน Standard Material
             color="#FFD700"
-            emissive="#FFD700"
-            emissiveIntensity={2 * intensity * particle.life}
             transparent={true}
             opacity={particle.life}
           />
@@ -1240,32 +1375,47 @@ export default function BlockBreaker3D() {
     // ตรวจสอบว่าเป็นมือถือหรือไม่
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
-    // ถ้าเป็นมือถือ ให้ทดสอบ FPS
-    if (isMobile) {
+    // ตรวจสอบประสิทธิภาพของเครื่อง
+    const checkPerformance = () => {
+      // ตรวจสอบจำนวน logical processors
+      const cpuCores = navigator.hardwareConcurrency || 2
+
+      // ตรวจสอบ memory (ถ้าเบราว์เซอร์รองรับ)
+      let lowMemory = false
+      if ((navigator as any).deviceMemory) {
+        lowMemory = (navigator as any).deviceMemory < 4
+      }
+
+      // ตรวจสอบ FPS
       let lastTime = performance.now()
       let frames = 0
       let testDuration = 0
+      let lowFps = false
 
-      const checkPerformance = () => {
+      const checkFps = () => {
         const now = performance.now()
         frames++
         testDuration += now - lastTime
         lastTime = now
 
-        if (testDuration >= 1000) {
-          // ทดสอบ 1 วินาที
+        if (testDuration >= 500) {
+          // ทดสอบแค่ 0.5 วินาที
           const fps = (frames * 1000) / testDuration
-          if (fps < 30) {
-            setIsLowPerformance(true)
-          }
+          lowFps = fps < 40
+
+          // ตัดสินใจจากข้อมูลทั้งหมด
+          const isLowPerf = lowFps || lowMemory || cpuCores <= 4 || isMobile
+          setIsLowPerformance(isLowPerf)
           return
         }
 
-        requestAnimationFrame(checkPerformance)
+        requestAnimationFrame(checkFps)
       }
 
-      requestAnimationFrame(checkPerformance)
+      requestAnimationFrame(checkFps)
     }
+
+    checkPerformance()
   }, [])
 
   // Level configurations
@@ -1414,6 +1564,9 @@ export default function BlockBreaker3D() {
         // Add the destroyed block
         blocksToProcess.set(id, destroyedBlock.health)
 
+        // ลดรัศมีผลกระทบลงเพื่อลดจำนวนบล็อกที่ได้รับผลกระทบ
+        const effectRadius = isLowPerformance ? 1.2 : 1.5 // ลดลงจาก 2
+
         // Find nearby blocks for area effect
         currentBlocks.forEach((block) => {
           if (block.id !== id) {
@@ -1421,9 +1574,9 @@ export default function BlockBreaker3D() {
             const distance = Math.sqrt(Math.pow(x - bx, 2) + Math.pow(y - by, 2) + Math.pow(z - bz, 2))
 
             // If block is close enough, add it to the processing list
-            if (distance < 2) {
+            if (distance < effectRadius) {
               // Closer blocks take more damage
-              const damage = distance < 1 ? 2 : 1
+              const damage = distance < 0.8 ? 2 : 1 // ลดลงจาก 1
               blocksToProcess.set(block.id, damage)
             }
           }
@@ -1467,7 +1620,7 @@ export default function BlockBreaker3D() {
         return updatedBlocks
       })
     },
-    [level],
+    [level, isLowPerformance],
   )
 
   // Handle block damage
@@ -1582,12 +1735,12 @@ export default function BlockBreaker3D() {
           />
         )}
 
-        <EffectComposer enabled={!isLowPerformance}>
+        <EffectComposer enabled={!isLowPerformance && !isMobile}>
           <Bloom
-            luminanceThreshold={0.2}
+            luminanceThreshold={0.3} // เพิ่มขึ้นจาก 0.2
             luminanceSmoothing={0.9}
-            height={isLowPerformance ? 100 : 300}
-            intensity={isLowPerformance ? 0.8 : 1.5}
+            height={100} // ลดลงจาก 300
+            intensity={0.8} // ลดลงจาก 1.5
           />
         </EffectComposer>
       </Canvas>
