@@ -149,117 +149,6 @@ function Block3D({
   )
 }
 
-// กล่องไม้สำหรับตกแต่ง
-function WoodenBox({
-  position = [0, 0, 0],
-  rotation = [0, 0, 0],
-  size = [1, 1, 1],
-}: {
-  position?: [number, number, number]
-  rotation?: [number, number, number]
-  size?: [number, number, number]
-}) {
-  const boxRef = useRef<THREE.Group>(null)
-
-  // เพิ่มการเคลื่อนไหวเล็กน้อย
-  useFrame(({ clock }) => {
-    if (boxRef.current) {
-      // เคลื่อนไหวเล็กน้อยตามเวลา
-      boxRef.current.position.y = position[1] + Math.sin(clock.getElapsedTime() * 0.5) * 0.05
-      boxRef.current.rotation.y = rotation[1] + Math.sin(clock.getElapsedTime() * 0.3) * 0.02
-    }
-  })
-
-  return (
-    <group ref={boxRef} position={position} rotation={rotation}>
-      {/* ตัวกล่อง */}
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={size} />
-        <meshStandardMaterial color="#8B4513" roughness={0.8} />
-      </mesh>
-
-      {/* ลายไม้บนกล่อง */}
-      {[0, 1, 2, 3, 4, 5].map((face) => {
-        // คำนวณตำแหน่งและการหมุนสำหรับแต่ละด้าน
-        let facePosition: [number, number, number] = [0, 0, 0]
-        let faceRotation: [number, number, number] = [0, 0, 0]
-
-        switch (face) {
-          case 0: // ด้านบน
-            facePosition = [0, size[1] / 2 + 0.001, 0]
-            faceRotation = [-Math.PI / 2, 0, 0]
-            break
-          case 1: // ด้านล่าง
-            facePosition = [0, -size[1] / 2 - 0.001, 0]
-            faceRotation = [Math.PI / 2, 0, 0]
-            break
-          case 2: // ด้านหน้า
-            facePosition = [0, 0, size[2] / 2 + 0.001]
-            faceRotation = [0, 0, 0]
-            break
-          case 3: // ด้านหลัง
-            facePosition = [0, 0, -size[2] / 2 - 0.001]
-            faceRotation = [0, Math.PI, 0]
-            break
-          case 4: // ด้านซ้าย
-            facePosition = [-size[0] / 2 - 0.001, 0, 0]
-            faceRotation = [0, -Math.PI / 2, 0]
-            break
-          case 5: // ด้านขวา
-            facePosition = [size[0] / 2 + 0.001, 0, 0]
-            faceRotation = [0, Math.PI / 2, 0]
-            break
-        }
-
-        return (
-          <mesh key={face} position={facePosition} rotation={faceRotation} receiveShadow>
-            <planeGeometry args={face < 2 ? [size[0], size[2]] : face < 4 ? [size[0], size[1]] : [size[2], size[1]]} />
-            <meshStandardMaterial
-              color={face % 2 === 0 ? "#A0522D" : "#8B4513"}
-              roughness={0.9}
-              metalness={0.1}
-              map={undefined} // ถ้ามีเทคซ์เจอร์ไม้ สามารถใส่ตรงนี้ได้
-            />
-          </mesh>
-        )
-      })}
-
-      {/* เส้นขอบกล่อง */}
-      {[0, 1, 2, 3].map((edge) => {
-        // เส้นขอบด้านบน
-        return (
-          <mesh
-            key={`top-${edge}`}
-            position={[
-              edge === 0 || edge === 3 ? -size[0] / 2 : size[0] / 2,
-              size[1] / 2,
-              edge === 0 || edge === 1 ? -size[2] / 2 : size[2] / 2,
-            ]}
-            castShadow
-          >
-            <boxGeometry args={[0.05, 0.05, edge === 0 || edge === 3 ? size[2] : 0.05]} />
-            <meshStandardMaterial color="#5D4037" roughness={0.7} />
-          </mesh>
-        )
-      })}
-
-      {/* ฝากล่อง (เปิดได้) */}
-      <group position={[0, size[1] / 2, -size[2] / 2]} rotation={[Math.PI / 6, 0, 0]}>
-        <mesh castShadow receiveShadow position={[0, 0, size[2] / 2]}>
-          <boxGeometry args={[size[0], 0.1, size[2]]} />
-          <meshStandardMaterial color="#A0522D" roughness={0.8} />
-        </mesh>
-
-        {/* บานพับ */}
-        <mesh castShadow position={[0, 0, 0]}>
-          <cylinderGeometry args={[0.05, 0.05, size[0] - 0.1, 8]} rotation={[0, 0, Math.PI / 2]} />
-          <meshStandardMaterial color="#5D4037" metalness={0.5} roughness={0.5} />
-        </mesh>
-      </group>
-    </group>
-  )
-}
-
 // Hit effect component
 function HitEffect({
   position,
@@ -725,9 +614,6 @@ function GameScene({
         <FloatingWoodChip key={chip.id} position={chip.position} scale={chip.scale} />
       ))}
 
-      {/* กล่องไม้ตกแต่ง - แสดงเฉพาะเมื่อไม่ใช่อุปกรณ์ประสิทธิภาพต่ำ */}
-      {!isLowPerformance && <WoodenBox position={[-6, 0, 0]} rotation={[0, Math.PI / 6, 0]} size={[1.2, 0.8, 1]} />}
-
       <Physics
         // ปรับแต่งการตั้งค่าฟิสิกส์ให้เบาลง
         iterations={isLowPerformance ? 3 : 5} // ลดลงจาก 10
@@ -882,9 +768,6 @@ function StartScene({ onStartGame }: { onStartGame: () => void }) {
         </>
       )}
 
-      {/* กล่องไม้ตกแต่ง */}
-      <WoodenBox position={[3, 0, -2]} rotation={[0, -Math.PI / 4, 0]} size={[1.2, 0.8, 1]} />
-
       {/* Floor */}
       <mesh position={[0, -0.5, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[100, 100]} />
@@ -1007,9 +890,6 @@ function LevelCompleteScene({
         </mesh>
       </group>
 
-      {/* กล่องไม้ตกแต่ง */}
-      <WoodenBox position={[3, 0, 3]} rotation={[0, Math.PI / 3, 0]} size={[1, 0.7, 0.9]} />
-
       <OrbitControls
         enableZoom={false}
         enablePan={false}
@@ -1130,9 +1010,6 @@ function GameOverScene({
           </Float>
         </Center>
       </group>
-
-      {/* กล่องไม้ตกแต่ง */}
-      <WoodenBox position={[-3, 0, 3]} rotation={[0, -Math.PI / 5, 0]} size={[1.1, 0.8, 0.9]} />
 
       <OrbitControls
         enableZoom={false}
@@ -1266,9 +1143,6 @@ function GameCompleteScene({
           <meshStandardMaterial color="#FFD700" metalness={0.8} roughness={0.2} />
         </mesh>
       </group>
-
-      {/* กล่องไม้ตกแต่ง */}
-      <WoodenBox position={[4, 0, 2]} rotation={[0, Math.PI / 4, 0]} size={[1.2, 0.9, 1]} />
 
       <OrbitControls
         enableZoom={false}
