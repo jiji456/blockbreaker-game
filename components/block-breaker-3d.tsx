@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useCallback } from "react"
 import { Canvas, useFrame, useThree } from "@react-three/fiber"
-// เพิ่ม import สำหรับองค์ประกอบ 3D เพิ่มเติม
 import { Physics, useBox, usePlane } from "@react-three/cannon"
 import { OrbitControls, PerspectiveCamera, Text, Center, Float, Stars, Sky, Cloud } from "@react-three/drei"
 import { Bloom, EffectComposer } from "@react-three/postprocessing"
@@ -137,26 +136,32 @@ function Block3D({
     e.stopPropagation()
     setIsHit(true)
 
-    // Apply force to make it look like it was hit
-    api.applyImpulse([0, 3, 0], [0, 0, 0])
+    try {
+      // Apply force to make it look like it was hit
+      api.applyImpulse([0, 3, 0], [0, 0, 0])
 
-    // Trigger hit effect at this position
-    onHit(position, blockType)
+      // Trigger hit effect at this position
+      onHit(position, blockType)
 
-    // Reduce health
-    const newHealth = localHealth - 1
-    setLocalHealth(newHealth)
+      // Reduce health
+      const newHealth = localHealth - 1
+      setLocalHealth(newHealth)
 
-    if (newHealth <= 0) {
-      // Block destroyed
+      if (newHealth <= 0) {
+        // Block destroyed
+        onDestroy(id)
+      } else {
+        // Block damaged
+        onDamage(id)
+      }
+
+      // Reset hit animation
+      setTimeout(() => setIsHit(false), 200)
+    } catch (error) {
+      console.error("Error in block click handler:", error)
+      // Fallback behavior to ensure game doesn't get stuck
       onDestroy(id)
-    } else {
-      // Block damaged
-      onDamage(id)
     }
-
-    // Reset hit animation
-    setTimeout(() => setIsHit(false), 200)
   }
 
   // Get emissive color based on state
@@ -266,7 +271,11 @@ function PowerUp({
 
   // Handle click/tap
   const handleClick = () => {
-    onCollect(type)
+    try {
+      onCollect(type)
+    } catch (error) {
+      console.error("Error collecting power-up:", error)
+    }
   }
 
   return (
@@ -883,60 +892,64 @@ function GameScene({
   // Handle block hit
   const handleBlockHit = useCallback(
     (position: [number, number, number], blockType: BlockType) => {
-      // Add hit effect
-      if (Math.random() > 0.5) {
-        const newEffectId = effectIdCounter.current++
-        setHitEffects((prev) => [...prev, { id: newEffectId, position, blockType }])
+      try {
+        // Add hit effect
+        if (Math.random() > 0.5) {
+          const newEffectId = effectIdCounter.current++
+          setHitEffects((prev) => [...prev, { id: newEffectId, position, blockType }])
 
-        // Remove effect after animation
-        setTimeout(() => {
-          setHitEffects((prev) => prev.filter((effect) => effect.id !== newEffectId))
-        }, 200)
-      }
-
-      // Add explosion effect for explosive blocks
-      if (blockType === "explosive") {
-        const newExplosionId = explosionIdCounter.current++
-        setExplosions((prev) => [...prev, { id: newExplosionId, position, intensity: 1.5 }])
-
-        // Apply stronger camera shake for explosions
-        cameraShakeRef.current = {
-          x: position[0] * 0.1,
-          y: position[1] * 0.05,
-          intensity: 0.5,
+          // Remove effect after animation
+          setTimeout(() => {
+            setHitEffects((prev) => prev.filter((effect) => effect.id !== newEffectId))
+          }, 200)
         }
 
-        // Remove explosion after animation
-        setTimeout(() => {
-          setExplosions((prev) => prev.filter((explosion) => explosion.id !== newExplosionId))
-        }, 1000)
-      }
+        // Add explosion effect for explosive blocks
+        if (blockType === "explosive") {
+          const newExplosionId = explosionIdCounter.current++
+          setExplosions((prev) => [...prev, { id: newExplosionId, position, intensity: 1.5 }])
 
-      // Add wood chips
-      if (!isLowPerformance && Math.random() > 0.7) {
-        const newChips = []
-        newChips.push({
-          id: woodChipCounter.current++,
-          position: position as [number, number, number],
-          scale: 0.5 + Math.random() * 0.5,
-        })
-        setWoodChips((prev) => [...prev, ...newChips])
-      }
+          // Apply stronger camera shake for explosions
+          cameraShakeRef.current = {
+            x: position[0] * 0.1,
+            y: position[1] * 0.05,
+            intensity: 0.5,
+          }
 
-      // ลบ wood chips เก่าทิ้ง
-      if (woodChips.length > 3) {
-        setWoodChips((prev) => prev.slice(prev.length - 3))
-      }
+          // Remove explosion after animation
+          setTimeout(() => {
+            setExplosions((prev) => prev.filter((explosion) => explosion.id !== newExplosionId))
+          }, 1000)
+        }
 
-      // Apply camera shake
-      cameraShakeRef.current = {
-        x: position[0] * 0.05,
-        y: position[1] * 0.02,
-        intensity: 0.2 * clickIntensity,
-      }
+        // Add wood chips
+        if (!isLowPerformance && Math.random() > 0.7) {
+          const newChips = []
+          newChips.push({
+            id: woodChipCounter.current++,
+            position: position as [number, number, number],
+            scale: 0.5 + Math.random() * 0.5,
+          })
+          setWoodChips((prev) => [...prev, ...newChips])
+        }
 
-      // Pass to parent component
-      onBlockHit(position, blockType)
+        // ลบ wood chips เก่าทิ้ง
+        if (woodChips.length > 3) {
+          setWoodChips((prev) => prev.slice(prev.length - 3))
+        }
+
+        // Apply camera shake
+        cameraShakeRef.current = {
+          x: position[0] * 0.05,
+          y: position[1] * 0.02,
+          intensity: 0.2 * clickIntensity,
+        }
+
+        // Pass to parent component
+        onBlockHit(position, blockType)
+      } catch (error) {
+        console.error("Error in handleBlockHit:", error)
+      }
     },
     [clickIntensity, isLowPerformance, onBlockHit, woodChips.length],
   )
@@ -1104,7 +1117,13 @@ function StartScene({ onStartGame }: { onStartGame: () => void }) {
 
   // Handle click to start game
   const handleClick = () => {
-    onStartGame()
+    try {
+      onStartGame()
+    } catch (error) {
+      console.error("Error starting game:", error)
+      // Fallback - reload the page if game fails to start
+      window.location.reload()
+    }
   }
 
   return (
@@ -1251,7 +1270,13 @@ function LevelCompleteScene({
 
   // Handle click to go to next level
   const handleClick = () => {
-    onNextLevel()
+    try {
+      onNextLevel()
+    } catch (error) {
+      console.error("Error going to next level:", error)
+      // Fallback - reload the page if level transition fails
+      window.location.reload()
+    }
   }
 
   return (
@@ -1320,7 +1345,6 @@ function LevelCompleteScene({
               anchorY="middle"
               outlineColor="#000000"
               outlineWidth={0.02}
-              font="/fonts/Inter-Bold.woff"
             >
               TAP FOR NEXT LEVEL
             </Text>
@@ -1370,11 +1394,23 @@ function GameOverScene({
 
   // Handle click to restart game
   const handleClick = () => {
-    onRestart()
+    try {
+      onRestart()
+    } catch (error) {
+      console.error("Error restarting game:", error)
+      // Fallback - reload the page if restart fails
+      window.location.reload()
+    }
   }
 
   const handleBackToMenu = () => {
-    onBackToMenu()
+    try {
+      onBackToMenu()
+    } catch (error) {
+      console.error("Error going back to menu:", error)
+      // Fallback - reload the page if menu transition fails
+      window.location.reload()
+    }
   }
 
   return (
@@ -1504,11 +1540,23 @@ function GameCompleteScene({
 
   // Handle click to restart game
   const handleClick = () => {
-    onRestart()
+    try {
+      onRestart()
+    } catch (error) {
+      console.error("Error restarting game:", error)
+      // Fallback - reload the page if restart fails
+      window.location.reload()
+    }
   }
 
   const handleBackToMenu = () => {
-    onBackToMenu()
+    try {
+      onBackToMenu()
+    } catch (error) {
+      console.error("Error going back to menu:", error)
+      // Fallback - reload the page if menu transition fails
+      window.location.reload()
+    }
   }
 
   return (
@@ -1726,6 +1774,7 @@ export default function BlockBreaker3D() {
   const [hitPositions, setHitPositions] = useState<[number, number, number][]>([])
   const [isLowPerformance, setIsLowPerformance] = useState(false)
   const isMobile = useMobile()
+  const [gameError, setGameError] = useState<string | null>(null)
 
   useEffect(() => {
     // ตรวจสอบว่าเป็นมือถือหรือไม่
@@ -1749,6 +1798,23 @@ export default function BlockBreaker3D() {
 
     checkPerformance()
   }, [])
+
+  // Error handling
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      console.error("Game error:", event.error)
+      setGameError(event.message)
+
+      // Try to recover from error
+      if (gameState === "playing") {
+        // If error happens during gameplay, try to go back to start screen
+        setGameState("start")
+      }
+    }
+
+    window.addEventListener("error", handleError)
+    return () => window.removeEventListener("error", handleError)
+  }, [gameState])
 
   // Level configurations
   const getLevelConfig = useCallback(
@@ -1804,322 +1870,354 @@ export default function BlockBreaker3D() {
 
   // Initialize level
   const initializeLevel = useCallback(() => {
-    if (level > 10) {
-      // Game completed
-      setGameState("gameComplete")
-      return
-    }
+    try {
+      if (level > 10) {
+        // Game completed
+        setGameState("gameComplete")
+        return
+      }
 
-    const config = getLevelConfig(level)
-    const newBlocks: any[] = []
-    const newPowerUps: { type: PowerUpType; position: [number, number, number] }[] = []
+      const config = getLevelConfig(level)
+      const newBlocks: any[] = []
+      const newPowerUps: { type: PowerUpType; position: [number, number, number] }[] = []
 
-    // Create blocks in a 3D grid pattern
-    let blockId = 0
-    const specialBlocksCount = {
-      explosive: 0,
-      heavy: 0,
-      bonus: 0,
-      shield: 0,
-    }
+      // Create blocks in a 3D grid pattern
+      let blockId = 0
+      const specialBlocksCount = {
+        explosive: 0,
+        heavy: 0,
+        bonus: 0,
+        shield: 0,
+      }
 
-    for (let layer = 0; layer < config.layers; layer++) {
-      for (let row = 0; row < config.rows; row++) {
-        for (let col = 0; col < config.columns; col++) {
-          // Skip some blocks randomly to create interesting shapes
-          // But ensure at least 70% of the grid is filled
-          if (Math.random() > 0.3 || (row === 0 && col === 0 && layer === 0)) {
-            // Calculate position with slight randomness
-            const x = (col - config.columns / 2) * 1.5 + (Math.random() * 0.4 - 0.2)
-            const y = layer * 1.2 + 0.5
-            const z = (row - config.rows / 2) * 1.5 + (Math.random() * 0.4 - 0.2)
+      for (let layer = 0; layer < config.layers; layer++) {
+        for (let row = 0; row < config.rows; row++) {
+          for (let col = 0; col < config.columns; col++) {
+            // Skip some blocks randomly to create interesting shapes
+            // But ensure at least 70% of the grid is filled
+            if (Math.random() > 0.3 || (row === 0 && col === 0 && layer === 0)) {
+              // Calculate position with slight randomness
+              const x = (col - config.columns / 2) * 1.5 + (Math.random() * 0.4 - 0.2)
+              const y = layer * 1.2 + 0.5
+              const z = (row - config.rows / 2) * 1.5 + (Math.random() * 0.4 - 0.2)
 
-            // Randomize block size slightly
-            const sizeX = 0.8 + Math.random() * 0.2
-            const sizeY = 0.8 + Math.random() * 0.2
-            const sizeZ = 0.8 + Math.random() * 0.2
+              // Randomize block size slightly
+              const sizeX = 0.8 + Math.random() * 0.2
+              const sizeY = 0.8 + Math.random() * 0.2
+              const sizeZ = 0.8 + Math.random() * 0.2
 
-            // Determine block type
-            let blockType: BlockType = "normal"
-            let blockHealth = config.blockHealth
+              // Determine block type
+              let blockType: BlockType = "normal"
+              let blockHealth = config.blockHealth
 
-            // Assign special block types
-            if (specialBlocksCount.explosive < config.specialBlocks.explosive && Math.random() < 0.2) {
-              blockType = "explosive"
-              specialBlocksCount.explosive++
-            } else if (specialBlocksCount.heavy < config.specialBlocks.heavy && Math.random() < 0.15) {
-              blockType = "heavy"
-              blockHealth = Math.ceil(blockHealth * 1.5) // Heavy blocks have more health
-              specialBlocksCount.heavy++
-            } else if (specialBlocksCount.bonus < config.specialBlocks.bonus && Math.random() < 0.2) {
-              blockType = "bonus"
-              blockHealth = Math.ceil(blockHealth * 0.7) // Bonus blocks have less health
-              specialBlocksCount.bonus++
-            } else if (specialBlocksCount.shield < config.specialBlocks.shield && Math.random() < 0.1) {
-              blockType = "shield"
-              blockHealth = Math.ceil(blockHealth * 1.2) // Shield blocks have more health
-              specialBlocksCount.shield++
+              // Assign special block types
+              if (specialBlocksCount.explosive < config.specialBlocks.explosive && Math.random() < 0.2) {
+                blockType = "explosive"
+                specialBlocksCount.explosive++
+              } else if (specialBlocksCount.heavy < config.specialBlocks.heavy && Math.random() < 0.15) {
+                blockType = "heavy"
+                blockHealth = Math.ceil(blockHealth * 1.5) // Heavy blocks have more health
+                specialBlocksCount.heavy++
+              } else if (specialBlocksCount.bonus < config.specialBlocks.bonus && Math.random() < 0.2) {
+                blockType = "bonus"
+                blockHealth = Math.ceil(blockHealth * 0.7) // Bonus blocks have less health
+                specialBlocksCount.bonus++
+              } else if (specialBlocksCount.shield < config.specialBlocks.shield && Math.random() < 0.1) {
+                blockType = "shield"
+                blockHealth = Math.ceil(blockHealth * 1.2) // Shield blocks have more health
+                specialBlocksCount.shield++
+              }
+
+              newBlocks.push({
+                id: blockId++,
+                position: [x, y, z] as [number, number, number],
+                size: [sizeX, sizeY, sizeZ] as [number, number, number],
+                color: woodColors[Math.floor(Math.random() * woodColors.length)],
+                health: blockHealth,
+                maxHealth: blockHealth,
+                blockType,
+              })
             }
-
-            newBlocks.push({
-              id: blockId++,
-              position: [x, y, z] as [number, number, number],
-              size: [sizeX, sizeY, sizeZ] as [number, number, number],
-              color: woodColors[Math.floor(Math.random() * woodColors.length)],
-              health: blockHealth,
-              maxHealth: blockHealth,
-              blockType,
-            })
           }
         }
       }
+
+      // Ensure we have at least the minimum number of blocks
+      while (newBlocks.length < config.blockCount) {
+        const x = Math.random() * 6 - 3
+        const y = Math.random() * 3 + 0.5
+        const z = Math.random() * 6 - 3
+
+        newBlocks.push({
+          id: blockId++,
+          position: [x, y, z] as [number, number, number],
+          size: [0.8 + Math.random() * 0.2, 0.8 + Math.random() * 0.2, 0.8 + Math.random() * 0.2] as [
+            number,
+            number,
+            number,
+          ],
+          color: woodColors[Math.floor(Math.random() * woodColors.length)],
+          health: config.blockHealth,
+          maxHealth: config.blockHealth,
+          blockType: "normal",
+        })
+      }
+
+      // Add power-ups
+      const powerUpCount = Math.min(Math.floor(level / 2) + 1, 3)
+      const powerUpTypes: PowerUpType[] = ["hammer", "bomb", "freeze", "multiplier"]
+
+      for (let i = 0; i < powerUpCount; i++) {
+        const x = Math.random() * 8 - 4
+        const y = Math.random() * 3 + 2
+        const z = Math.random() * 8 - 4
+
+        newPowerUps.push({
+          type: powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)],
+          position: [x, y, z] as [number, number, number],
+        })
+      }
+
+      setBlocks(newBlocks)
+      setPowerUps(newPowerUps)
+      setBlocksDestroyed(0)
+      setTimeLeft(config.timeLimit)
+      setCombo(0)
+      setLastBlockDestroyTime(0)
+      setActivePowerUp(null)
+      setPowerUpTimeLeft(0)
+      setGameState("playing")
+    } catch (error) {
+      console.error("Error initializing level:", error)
+      setGameError("Failed to initialize level. Please try again.")
+      setGameState("start")
     }
-
-    // Ensure we have at least the minimum number of blocks
-    while (newBlocks.length < config.blockCount) {
-      const x = Math.random() * 6 - 3
-      const y = Math.random() * 3 + 0.5
-      const z = Math.random() * 6 - 3
-
-      newBlocks.push({
-        id: blockId++,
-        position: [x, y, z] as [number, number, number],
-        size: [0.8 + Math.random() * 0.2, 0.8 + Math.random() * 0.2, 0.8 + Math.random() * 0.2] as [
-          number,
-          number,
-          number,
-        ],
-        color: woodColors[Math.floor(Math.random() * woodColors.length)],
-        health: config.blockHealth,
-        maxHealth: config.blockHealth,
-        blockType: "normal",
-      })
-    }
-
-    // Add power-ups
-    const powerUpCount = Math.min(Math.floor(level / 2) + 1, 3)
-    const powerUpTypes: PowerUpType[] = ["hammer", "bomb", "freeze", "multiplier"]
-
-    for (let i = 0; i < powerUpCount; i++) {
-      const x = Math.random() * 8 - 4
-      const y = Math.random() * 3 + 2
-      const z = Math.random() * 8 - 4
-
-      newPowerUps.push({
-        type: powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)],
-        position: [x, y, z] as [number, number, number],
-      })
-    }
-
-    setBlocks(newBlocks)
-    setPowerUps(newPowerUps)
-    setBlocksDestroyed(0)
-    setTimeLeft(config.timeLimit)
-    setCombo(0)
-    setLastBlockDestroyTime(0)
-    setActivePowerUp(null)
-    setPowerUpTimeLeft(0)
-    setGameState("playing")
   }, [level, getLevelConfig])
 
   // Start game
   const startGame = useCallback(() => {
-    setLevel(1)
-    setScore(0)
-    setTotalBlocksDestroyed(0)
-    setTimeout(() => {
-      initializeLevel()
-    }, 0)
+    try {
+      setLevel(1)
+      setScore(0)
+      setTotalBlocksDestroyed(0)
+      setGameError(null)
+      setTimeout(() => {
+        initializeLevel()
+      }, 0)
+    } catch (error) {
+      console.error("Error starting game:", error)
+      setGameError("Failed to start game. Please try again.")
+    }
   }, [initializeLevel])
 
   // Start next level
   const startNextLevel = useCallback(() => {
-    setLevel((prev) => prev + 1)
-    setTimeout(() => {
-      initializeLevel()
-    }, 0)
+    try {
+      setLevel((prev) => prev + 1)
+      setTimeout(() => {
+        initializeLevel()
+      }, 0)
+    } catch (error) {
+      console.error("Error starting next level:", error)
+      setGameError("Failed to start next level. Please try again.")
+      setGameState("start")
+    }
   }, [initializeLevel])
 
   // Handle block destroy
   const handleBlockDestroy = useCallback(
     (id: number) => {
-      // Find the block that was destroyed
-      setBlocks((currentBlocks) => {
-        const destroyedBlock = currentBlocks.find((block) => block.id === id)
-        if (!destroyedBlock) return currentBlocks
+      try {
+        // Find the block that was destroyed
+        setBlocks((currentBlocks) => {
+          const destroyedBlock = currentBlocks.find((block) => block.id === id)
+          if (!destroyedBlock) return currentBlocks
 
-        // Update combo
-        const now = Date.now()
-        const timeSinceLastDestroy = now - lastBlockDestroyTime
+          // Update combo
+          const now = Date.now()
+          const timeSinceLastDestroy = now - lastBlockDestroyTime
 
-        if (timeSinceLastDestroy < 1000) {
-          setCombo((prev) => prev + 1)
-        } else {
-          setCombo(1)
-        }
-
-        setLastBlockDestroyTime(now)
-
-        // Calculate score based on block type and combo
-        let blockScore = level * 10
-
-        if (destroyedBlock.blockType === "bonus") {
-          blockScore *= 2 // Bonus blocks give double points
-        }
-
-        // Apply combo multiplier
-        blockScore *= Math.min(combo + 1, 5) // Cap combo multiplier at 5x
-
-        // Apply power-up multiplier
-        if (activePowerUp === "multiplier") {
-          blockScore *= 2
-        }
-
-        setScore((prev) => prev + blockScore)
-
-        // Find all blocks that should be affected (including the destroyed one)
-        const [x, y, z] = destroyedBlock.position
-
-        // Create a map of blocks to process with their damage amounts
-        const blocksToProcess = new Map()
-
-        // Add the destroyed block
-        blocksToProcess.set(id, destroyedBlock.health)
-
-        // Special effects based on block type
-        if (destroyedBlock.blockType === "explosive") {
-          // Explosive blocks damage all nearby blocks
-          const explosionRadius = 3
-
-          currentBlocks.forEach((block) => {
-            if (block.id !== id) {
-              const [bx, by, bz] = block.position
-              const distance = Math.sqrt(Math.pow(x - bx, 2) + Math.pow(y - by, 2) + Math.pow(z - bz, 2))
-
-              // If block is close enough, add it to the processing list
-              if (distance < explosionRadius) {
-                // Closer blocks take more damage
-                const damage = Math.ceil((explosionRadius - distance) * 2)
-                blocksToProcess.set(block.id, damage)
-              }
-            }
-          })
-        } else {
-          // Normal area effect for other blocks
-          const effectRadius = isLowPerformance ? 1.2 : 1.5
-
-          // Find nearby blocks for area effect
-          currentBlocks.forEach((block) => {
-            if (block.id !== id) {
-              const [bx, by, bz] = block.position
-              const distance = Math.sqrt(Math.pow(x - bx, 2) + Math.pow(y - by, 2) + Math.pow(z - bz, 2))
-
-              // If block is close enough, add it to the processing list
-              if (distance < effectRadius) {
-                // Closer blocks take more damage
-                const damage = distance < 0.8 ? 2 : 1
-                blocksToProcess.set(block.id, damage)
-              }
-            }
-          })
-        }
-
-        // Process all blocks at once to avoid recursion
-        let destroyedCount = 0
-        let updatedBlocks = [...currentBlocks]
-
-        // First pass: apply damage to all blocks
-        blocksToProcess.forEach((damage, blockId) => {
-          updatedBlocks = updatedBlocks.map((block) => {
-            if (block.id === blockId) {
-              // Shield blocks take less damage
-              const actualDamage = block.blockType === "shield" ? Math.ceil(damage / 2) : damage
-              const newHealth = Math.max(0, block.health - actualDamage)
-              return { ...block, health: newHealth }
-            }
-            return block
-          })
-        })
-
-        // Second pass: count destroyed blocks and remove them
-        updatedBlocks = updatedBlocks.filter((block) => {
-          if (block.health <= 0) {
-            destroyedCount++
-            return false
+          if (timeSinceLastDestroy < 1000) {
+            setCombo((prev) => prev + 1)
+          } else {
+            setCombo(1)
           }
-          return true
+
+          setLastBlockDestroyTime(now)
+
+          // Calculate score based on block type and combo
+          let blockScore = level * 10
+
+          if (destroyedBlock.blockType === "bonus") {
+            blockScore *= 2 // Bonus blocks give double points
+          }
+
+          // Apply combo multiplier
+          blockScore *= Math.min(combo + 1, 5) // Cap combo multiplier at 5x
+
+          // Apply power-up multiplier
+          if (activePowerUp === "multiplier") {
+            blockScore *= 2
+          }
+
+          setScore((prev) => prev + blockScore)
+
+          // Find all blocks that should be affected (including the destroyed one)
+          const [x, y, z] = destroyedBlock.position
+
+          // Create a map of blocks to process with their damage amounts
+          const blocksToProcess = new Map()
+
+          // Add the destroyed block
+          blocksToProcess.set(id, destroyedBlock.health)
+
+          // Special effects based on block type
+          if (destroyedBlock.blockType === "explosive") {
+            // Explosive blocks damage all nearby blocks
+            const explosionRadius = 3
+
+            currentBlocks.forEach((block) => {
+              if (block.id !== id) {
+                const [bx, by, bz] = block.position
+                const distance = Math.sqrt(Math.pow(x - bx, 2) + Math.pow(y - by, 2) + Math.pow(z - bz, 2))
+
+                // If block is close enough, add it to the processing list
+                if (distance < explosionRadius) {
+                  // Closer blocks take more damage
+                  const damage = Math.ceil((explosionRadius - distance) * 2)
+                  blocksToProcess.set(block.id, damage)
+                }
+              }
+            })
+          } else {
+            // Normal area effect for other blocks
+            const effectRadius = isLowPerformance ? 1.2 : 1.5
+
+            // Find nearby blocks for area effect
+            currentBlocks.forEach((block) => {
+              if (block.id !== id) {
+                const [bx, by, bz] = block.position
+                const distance = Math.sqrt(Math.pow(x - bx, 2) + Math.pow(y - by, 2) + Math.pow(z - bz, 2))
+
+                // If block is close enough, add it to the processing list
+                if (distance < effectRadius) {
+                  // Closer blocks take more damage
+                  const damage = distance < 0.8 ? 2 : 1
+                  blocksToProcess.set(block.id, damage)
+                }
+              }
+            })
+          }
+
+          // Process all blocks at once to avoid recursion
+          let destroyedCount = 0
+          let updatedBlocks = [...currentBlocks]
+
+          // First pass: apply damage to all blocks
+          blocksToProcess.forEach((damage, blockId) => {
+            updatedBlocks = updatedBlocks.map((block) => {
+              if (block.id === blockId) {
+                // Shield blocks take less damage
+                const actualDamage = block.blockType === "shield" ? Math.ceil(damage / 2) : damage
+                const newHealth = Math.max(0, block.health - actualDamage)
+                return { ...block, health: newHealth }
+              }
+              return block
+            })
+          })
+
+          // Second pass: count destroyed blocks and remove them
+          updatedBlocks = updatedBlocks.filter((block) => {
+            if (block.health <= 0) {
+              destroyedCount++
+              return false
+            }
+            return true
+          })
+
+          // Update state
+          setBlocksDestroyed((prev) => prev + destroyedCount)
+          setTotalBlocksDestroyed((prev) => prev + destroyedCount)
+
+          // Check if level is complete
+          if (updatedBlocks.length === 0) {
+            setGameState("levelComplete")
+            setTimeLeft(0)
+          }
+
+          return updatedBlocks
         })
-
-        // Update state
-        setBlocksDestroyed((prev) => prev + destroyedCount)
-        setTotalBlocksDestroyed((prev) => prev + destroyedCount)
-
-        // Check if level is complete
-        if (updatedBlocks.length === 0) {
-          setGameState("levelComplete")
-          setTimeLeft(0)
-        }
-
-        return updatedBlocks
-      })
+      } catch (error) {
+        console.error("Error destroying block:", error)
+        // Fallback behavior to ensure game doesn't get stuck
+        setBlocks((prev) => prev.filter((block) => block.id !== id))
+      }
     },
     [level, isLowPerformance, lastBlockDestroyTime, combo, activePowerUp],
   )
 
   // Handle block damage
   const handleBlockDamage = useCallback((id: number) => {
-    setBlocks((prev) =>
-      prev.map((block) => {
-        if (block.id === id) {
-          return {
-            ...block,
-            health: block.health - 1,
+    try {
+      setBlocks((prev) =>
+        prev.map((block) => {
+          if (block.id === id) {
+            return {
+              ...block,
+              health: block.health - 1,
+            }
           }
-        }
-        return block
-      }),
-    )
+          return block
+        }),
+      )
+    } catch (error) {
+      console.error("Error damaging block:", error)
+    }
   }, [])
 
   // Handle power-up collection
   const handlePowerUpCollect = useCallback(
     (type: PowerUpType) => {
-      setActivePowerUp(type)
+      try {
+        setActivePowerUp(type)
 
-      // Set power-up duration based on type
-      switch (type) {
-        case "hammer":
-          setPowerUpTimeLeft(10) // Super hammer lasts 10 seconds
-          break
-        case "bomb":
-          // Bomb is instant - destroy all blocks with health <= 2
-          setBlocks((prev) =>
-            prev.filter((block) => {
-              if (block.health <= 2 && block.blockType !== "shield") {
-                setBlocksDestroyed((prevCount) => prevCount + 1)
-                setTotalBlocksDestroyed((prevCount) => prevCount + 1)
-                setScore((prevScore) => prevScore + level * 10)
-                return false
-              }
-              return true
-            }),
-          )
-          setPowerUpTimeLeft(0)
-          setActivePowerUp(null)
-          break
-        case "freeze":
-          setPowerUpTimeLeft(5) // Time freeze lasts 5 seconds
-          break
-        case "multiplier":
-          setPowerUpTimeLeft(10) // Score multiplier lasts 10 seconds
-          break
-        default:
-          setPowerUpTimeLeft(0)
-          break
+        // Set power-up duration based on type
+        switch (type) {
+          case "hammer":
+            setPowerUpTimeLeft(10) // Super hammer lasts 10 seconds
+            break
+          case "bomb":
+            // Bomb is instant - destroy all blocks with health <= 2
+            setBlocks((prev) =>
+              prev.filter((block) => {
+                if (block.health <= 2 && block.blockType !== "shield") {
+                  setBlocksDestroyed((prevCount) => prevCount + 1)
+                  setTotalBlocksDestroyed((prevCount) => prevCount + 1)
+                  setScore((prevScore) => prevScore + level * 10)
+                  return false
+                }
+                return true
+              }),
+            )
+            setPowerUpTimeLeft(0)
+            setActivePowerUp(null)
+            break
+          case "freeze":
+            setPowerUpTimeLeft(5) // Time freeze lasts 5 seconds
+            break
+          case "multiplier":
+            setPowerUpTimeLeft(10) // Score multiplier lasts 10 seconds
+            break
+          default:
+            setPowerUpTimeLeft(0)
+            break
+        }
+
+        // Remove the collected power-up
+        setPowerUps((prev) => prev.filter((powerUp) => powerUp.type !== type))
+      } catch (error) {
+        console.error("Error collecting power-up:", error)
       }
-
-      // Remove the collected power-up
-      setPowerUps((prev) => prev.filter((powerUp) => powerUp.type !== type))
     },
     [level],
   )
@@ -2173,29 +2271,52 @@ export default function BlockBreaker3D() {
   // Handle block hit for effects
   const handleBlockHit = useCallback(
     (position: [number, number, number], blockType: BlockType) => {
-      // Calculate click speed based on time between clicks
-      const now = Date.now()
-      const timeDiff = now - lastClickTimeRef.current
-      lastClickTimeRef.current = now
+      try {
+        // Calculate click speed based on time between clicks
+        const now = Date.now()
+        const timeDiff = now - lastClickTimeRef.current
+        lastClickTimeRef.current = now
 
-      // Update click intensity (faster clicks = higher intensity)
-      const newIntensity = timeDiff < 300 ? Math.min(clickIntensity + 0.5, 5) : Math.max(1, clickIntensity - 0.2)
-      setClickIntensity(newIntensity)
+        // Update click intensity (faster clicks = higher intensity)
+        const newIntensity = timeDiff < 300 ? Math.min(clickIntensity + 0.5, 5) : Math.max(1, clickIntensity - 0.2)
+        setClickIntensity(newIntensity)
 
-      // Add hit position for effects
-      setHitPositions((prev) => [...prev, position])
+        // Add hit position for effects
+        setHitPositions((prev) => [...prev, position])
 
-      // Remove hit position after animation
-      setTimeout(() => {
-        setHitPositions((prev) => prev.slice(1))
-      }, 500)
+        // Remove hit position after animation
+        setTimeout(() => {
+          setHitPositions((prev) => prev.slice(1))
+        }, 500)
+      } catch (error) {
+        console.error("Error handling block hit:", error)
+      }
     },
     [clickIntensity],
   )
 
   const backToMenu = useCallback(() => {
-    setGameState("start")
+    try {
+      setGameState("start")
+    } catch (error) {
+      console.error("Error going back to menu:", error)
+      // Force reload as last resort
+      window.location.reload()
+    }
   }, [])
+
+  // If there's a game error, show a simple error screen
+  if (gameError) {
+    return (
+      <div className="w-full h-screen flex flex-col items-center justify-center bg-red-900 text-white p-4">
+        <h1 className="text-2xl font-bold mb-4">Game Error</h1>
+        <p className="mb-6">{gameError}</p>
+        <button className="px-4 py-2 bg-white text-red-900 rounded font-bold" onClick={() => window.location.reload()}>
+          Reload Game
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full h-screen relative">
